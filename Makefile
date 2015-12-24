@@ -1,13 +1,15 @@
-all: build/lex.yy.c build/parser-lalr.tab.c
+all: build/rust-tokenizer
 
 .PHONY: all clean
 
 clean:
 	rm -rf build
 
-build/lex.yy.c:
+build/lex.c:
 	mkdir -p build
 	$(FLEX_PREFIX)flex -o build/lex.yy.c rust/src/grammar/lexer.l
+	echo '#include "parser-lalr.tab.h"' > build/lex.c
+	cat build/lex.yy.c >> build/lex.c
 
 build/parser-lalr.y:
 	mkdir -p build
@@ -15,3 +17,6 @@ build/parser-lalr.y:
 
 build/parser-lalr.tab.c: build/parser-lalr.y
 	$(BISON_PREFIX)bison build/parser-lalr.y --output=build/parser-lalr.tab.c --defines=build/parser-lalr.tab.h --name-prefix=rs -d
+
+build/rust-tokenizer: build/lex.c build/parser-lalr.y build/parser-lalr.tab.c
+	$(CC) -o build/rust-tokenizer grammar/rust-tokenizer.c build/lex.c build/parser-lalr.tab.c
