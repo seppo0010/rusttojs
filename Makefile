@@ -1,8 +1,9 @@
-all: build/rust-tokenizer
+all: build/rust-tokenizer build/rust-to-js
 
 .PHONY: all clean
 
 clean:
+	cargo clean
 	rm -rf build
 
 build/lex.c:
@@ -20,3 +21,8 @@ build/parser-lalr.tab.c: build/parser-lalr.y
 
 build/rust-tokenizer: build/lex.c build/parser-lalr.y build/parser-lalr.tab.c
 	$(CC) -o build/rust-tokenizer grammar/rust-tokenizer.c build/lex.c build/parser-lalr.tab.c
+
+build/rust-to-js:
+	mkdir -p build
+	cargo build
+	cp ./target/debug/rusttojs build/rust-to-js

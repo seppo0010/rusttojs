@@ -20,14 +20,11 @@ extern int rsparse();
 #define debug(...)
 
 static char pushback[PUSHBACK_LEN];
-static int verbose;
 
 void print(const char* format, ...) {
   va_list args;
   va_start(args, format);
-  if (verbose) {
-    vprintf(format, args);
-  }
+  vprintf(format, args);
   va_end(args);
 }
 
@@ -58,7 +55,7 @@ void push_back(char c) {
 }
 
 extern int rsdebug;
-int rsdebug = 1;
+int rsdebug = 0;
 
 struct node {
   struct node *next;
@@ -216,11 +213,6 @@ void print_node(struct node *n, int depth) {
 }
 
 int main(int argc, char **argv) {
-  if (argc == 2 && strcmp(argv[1], "-v") == 0) {
-    verbose = 1;
-  } else {
-    verbose = 0;
-  }
   int ret = 0;
   struct node *tmp;
   memset(pushback, '\0', PUSHBACK_LEN);
