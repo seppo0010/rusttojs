@@ -1,10 +1,14 @@
 extern crate serde_json;
 
+mod formatter;
+
 use std::io;
 use std::iter;
 use std::fmt::Debug;
 
 use serde_json::Value;
+
+use formatter::format_str;
 
 trait TreeNode : Debug + Sized {
   fn get_name(&self) -> String;
@@ -260,21 +264,32 @@ impl RustToJs for MacroExprType {
   }
 
   fn to_js(&self, indent: usize) -> String {
-    format!("{}{}({})",
+    format!("{}{}",
         iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
         match &*self.path_expr {
-          "println" => "console.log",
-          x => x,
-        },
-        self.delimited_token_trees[1].to_js(indent)
-        )
+          "println" => format!("console.log({})", format_str(&self.delimited_token_trees[1])),
+          _ => format!("{}({})",
+            self.path_expr,
+            self.delimited_token_trees[1].to_js(indent)
+            )
+        }
+    )
   }
 }
 
-#[derive(Debug)]
-enum TokenTree {
+#[derive(Debug, Clone)]
+pub enum TokenTree {
   Tok(String),
   TokenTrees(Vec<TokenTree>),
+}
+
+impl TokenTree {
+  fn get_string(&self) -> Option<&String> {
+    match *self {
+      TokenTree::Tok(ref s) => Some(s),
+      _ => None,
+    }
+  }
 }
 
 impl RustToJs for TokenTree {
@@ -290,7 +305,7 @@ impl RustToJs for TokenTree {
   fn to_js(&self, indent: usize) -> String {
     match *self {
       TokenTree::Tok(ref s) => s.clone(),
-      TokenTree::TokenTrees(ref v) => v.iter().map(|t| t.to_js(indent)).collect::<Vec<_>>().join(""),
+      TokenTree::TokenTrees(ref v) => v.iter().map(|t| t.to_js(indent)).collect::<Vec<_>>().join(" "),
     }
   }
 }
