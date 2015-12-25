@@ -47,7 +47,6 @@ trait RustToJs {
 
 #[derive(Debug)]
 struct CrateType {
-  shebang: Option<MetaItemType>,
   inner_attrs: Vec<AttrType>,
   mod_items: Vec<ModItemType>,
 }
@@ -56,9 +55,7 @@ impl RustToJs for CrateType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     let mod_items = value.get_nodes().into_iter().next().map(|items|
       items.get_nodes().into_iter().map(|item| ModItemType::from_tree(&item)).collect()).unwrap_or(Vec::new());
-    // println!("{:?}", mod_items);
     CrateType {
-      shebang: None,
       inner_attrs: vec![],
       mod_items: mod_items,
     }
@@ -71,15 +68,7 @@ impl RustToJs for CrateType {
 
 #[derive(Debug)]
 struct AttrType {
-  shebang: Option<MetaItemType>,
   doc_comment: Option<String>,
-}
-
-#[derive(Debug)]
-enum MetaItemType {
-  MetaWord(String),
-  MetaNameValue(String, String),
-  MetaList(String, Vec<String>),
 }
 
 #[derive(Debug)]
@@ -163,7 +152,24 @@ impl RustToJs for ItemFn {
     let name = value.get_node_by_name("ident").unwrap()
       .get_string_nodes().into_iter().next().unwrap();
     let fn_decl: (Vec<ParameterType>, Option<String>) = value.
-      get_node_by_name("FnDecl").map(|_node| { (vec![], None)
+      get_node_by_name("FnDecl").map(|node| {
+          (node.get_node_by_name("Args")
+           .map(|args|
+             args.get_nodes().iter().map(|arg| {
+               let name = arg
+                 .get_node_by_name("PatLit").unwrap()
+                 .get_node_by_name("components").unwrap()
+                 .get_node_by_name("ident").unwrap()
+                 .get_string_nodes().join("").to_owned();
+               let parameter_type = arg
+                 .get_node_by_name("TySum").unwrap()
+                 .get_node_by_name("TyPath").unwrap()
+                 .get_node_by_name("components").unwrap()
+                 .get_node_by_name("ident").unwrap()
+                 .get_string_nodes().join("").to_owned();
+               ParameterType { name: name, parameter_type: parameter_type }
+               }).collect()
+             ).unwrap_or(vec![]), None)
         }).unwrap_or((vec![], None));
     ItemFn {
       name: name,
@@ -174,11 +180,13 @@ impl RustToJs for ItemFn {
   }
 
   fn to_js(&self, indent: usize) -> String {
-    format!("function {}({}) {}\n{};\n{}",
+    let bl = self.inner_attrs_and_block.to_js(indent + 1);
+    format!("function {}({}) {}\n{}{}{}",
         self.name,
         self.fn_decl.0.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "),
         "{",
-        self.inner_attrs_and_block.to_js(indent + 1),
+        bl,
+        if bl.len() == 0 { "" } else { ";\n" },
         "}"
         )
   }
