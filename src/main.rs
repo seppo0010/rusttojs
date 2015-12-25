@@ -227,12 +227,14 @@ impl RustToJs for AttrsAndBlockType {
 #[derive(Debug)]
 enum StmtType {
   ExprMac(MacroExprType),
+  DeclLocal(DeclLocalType),
 }
 
 impl RustToJs for StmtType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
       "ExprMac" => StmtType::ExprMac(MacroExprType::from_tree(&value.get_nodes()[0])),
+      "DeclLocal" => StmtType::DeclLocal(DeclLocalType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -240,7 +242,89 @@ impl RustToJs for StmtType {
   fn to_js(&self, indent: usize) -> String {
     match *self {
       StmtType::ExprMac(ref m) => m.to_js(indent),
+      StmtType::DeclLocal(ref m) => m.to_js(indent),
     }
+  }
+}
+
+#[derive(Debug)]
+enum ExprLit {
+  LitInteger(String),
+  LitStr(String),
+}
+
+impl RustToJs for ExprLit {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    match &*value.get_name() {
+      "LitInteger" => ExprLit::LitInteger(value.get_string_nodes().join("").to_owned()),
+      "LitStr" => ExprLit::LitStr(value.get_string_nodes().join("").to_owned()),
+      _ => panic!("{:?}", value),
+    }
+  }
+
+  fn to_js(&self, _indent: usize) -> String {
+    match *self {
+      ExprLit::LitInteger(ref e) => e.clone(),
+      ExprLit::LitStr(ref e) => e.clone(),
+    }
+  }
+}
+
+#[derive(Debug)]
+enum ExprType {
+  ExprLit(ExprLit)
+}
+
+impl RustToJs for ExprType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    match &*value.get_name() {
+      "ExprLit" => ExprType::ExprLit(ExprLit::from_tree(&value.get_nodes()[0])),
+      _ => panic!("{:?}", value),
+    }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      ExprType::ExprLit(ref e) => e.to_js(indent),
+    }
+  }
+}
+
+#[derive(Debug)]
+struct DeclLocalType {
+  name: String,
+  value_type: Option<String>,
+  value: Option<ExprType>
+}
+
+impl RustToJs for DeclLocalType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    assert_eq!(value.get_name(), "DeclLocal");
+    let name = value
+      .get_node_by_name("PatLit").unwrap()
+      .get_node_by_name("components").unwrap()
+      .get_node_by_name("ident").unwrap()
+      .get_string_nodes().join("").to_owned();
+
+    let initial_value = value
+      .get_node_by_name("ExprLit")
+      .map(|node| ExprType::from_tree(node));
+    DeclLocalType {
+      name: name,
+      value_type: None,
+      value: initial_value,
+    }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    format!("{}var {}{}",
+        iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+        self.name,
+        match self.value {
+          Some(ref v) => format!(" = {}", v.to_js(indent)),
+          None => "".to_owned(),
+        }
+        )
   }
 }
 
