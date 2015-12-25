@@ -121,17 +121,23 @@ impl RustToJs for ModItemType {
 
 #[derive(Debug)]
 enum ItemType {
-  ItemFn(ItemFn)
+  ItemFn(ItemFn),
+  ItemMacro(MacroExprType),
 }
 
 impl RustToJs for ItemType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
-    ItemType::ItemFn(ItemFn::from_tree(value))
+    match &*value.get_name() {
+      "ItemFn" => ItemType::ItemFn(ItemFn::from_tree(value)),
+      "ItemMacro" => ItemType::ItemMacro(MacroExprType::from_tree(value)),
+      _ => panic!("{:?}", value),
+    }
   }
 
   fn to_js(&self, indent: usize) -> String {
     match *self {
       ItemType::ItemFn(ref i) => i.to_js(indent),
+      ItemType::ItemMacro(ref i) => i.to_js(indent),
     }
   }
 }
