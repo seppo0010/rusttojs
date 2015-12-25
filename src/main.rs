@@ -1,6 +1,7 @@
 extern crate serde_json;
 
 use std::io;
+use std::iter;
 use std::fmt::Debug;
 
 use serde_json::Value;
@@ -41,6 +42,7 @@ impl TreeNode for Value {
 
 trait RustToJs {
   fn from_tree<T: TreeNode>(value: &T) -> Self;
+  fn to_js(&self, indent: usize) -> String;
 }
 
 #[derive(Debug)]
@@ -60,6 +62,10 @@ impl RustToJs for CrateType {
       inner_attrs: vec![],
       mod_items: mod_items,
     }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    self.mod_items.iter().map(|item| item.to_js(indent)).collect::<Vec<_>>().join("\n")
   }
 }
 
@@ -92,6 +98,10 @@ impl RustToJs for AttrsAndVisType {
       vis: vis,
     }
   }
+
+  fn to_js(&self, _indent: usize) -> String {
+    "".to_owned()
+  }
 }
 
 #[derive(Debug)]
@@ -107,14 +117,30 @@ impl RustToJs for ModItemType {
     assert_eq!(nodes.len(), 2);
     ModItemType {
       attrs_and_vis: AttrsAndVisType::from_tree(&nodes[0]),
-      item: ItemType::ItemFn(ItemFn::from_tree(&nodes[1])),
+      item: ItemType::from_tree(&nodes[1]),
     }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    self.item.to_js(indent)
   }
 }
 
 #[derive(Debug)]
 enum ItemType {
   ItemFn(ItemFn)
+}
+
+impl RustToJs for ItemType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    ItemType::ItemFn(ItemFn::from_tree(value))
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      ItemType::ItemFn(ref i) => i.to_js(indent),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -143,14 +169,18 @@ impl RustToJs for ItemFn {
       name: name,
       generic_params: (Vec::new(), Vec::new()),
       fn_decl: fn_decl,
-      inner_attrs_and_block: AttrsAndBlockType {
-        attrs: Vec::new(),
-        stmts: value.get_node_by_name("ExprBlock")
-          .and_then(|node| node.get_node_by_name("stmts"))
-          .map(|node| node.get_nodes().iter().map(|node| StmtType::from_tree(node)).collect()
-              ).unwrap_or(Vec::new()),
-      },
+      inner_attrs_and_block: AttrsAndBlockType::from_tree(value),
     }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    format!("function {}({}) {}\n{};\n{}",
+        self.name,
+        self.fn_decl.0.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "),
+        "{",
+        self.inner_attrs_and_block.to_js(indent + 1),
+        "}"
+        )
   }
 }
 
@@ -158,6 +188,22 @@ impl RustToJs for ItemFn {
 struct AttrsAndBlockType {
   attrs: Vec<AttrType>,
   stmts: Vec<StmtType>,
+}
+
+impl RustToJs for AttrsAndBlockType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    AttrsAndBlockType {
+      attrs: Vec::new(),
+      stmts: value.get_node_by_name("ExprBlock")
+        .and_then(|node| node.get_node_by_name("stmts"))
+        .map(|node| node.get_nodes().iter().map(|node| StmtType::from_tree(node)).collect()
+            ).unwrap_or(Vec::new()),
+    }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    self.stmts.iter().map(|s| s.to_js(indent)).collect::<Vec<_>>().join(";\n").to_owned()
+  }
 }
 
 #[derive(Debug)]
@@ -170,6 +216,12 @@ impl RustToJs for StmtType {
     match &*value.get_name() {
       "ExprMac" => StmtType::ExprMac(MacroExprType::from_tree(&value.get_nodes()[0])),
       _ => panic!("{:?}", value),
+    }
+  }
+
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      StmtType::ExprMac(ref m) => m.to_js(indent),
     }
   }
 }
@@ -198,6 +250,17 @@ impl RustToJs for MacroExprType {
       ]
     }
   }
+
+  fn to_js(&self, indent: usize) -> String {
+    format!("{}{}({})",
+        iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+        match &*self.path_expr {
+          "println" => "console.log",
+          x => x,
+        },
+        self.delimited_token_trees[1].to_js(indent)
+        )
+  }
 }
 
 #[derive(Debug)]
@@ -215,10 +278,17 @@ impl RustToJs for TokenTree {
       _ => panic!("{:?}", value),
     }
   }
+
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      TokenTree::Tok(ref s) => s.clone(),
+      TokenTree::TokenTrees(ref v) => v.iter().map(|t| t.to_js(indent)).collect::<Vec<_>>().join(""),
+    }
+  }
 }
 
 fn main() {
   let decoded: Value = serde_json::from_reader(io::stdin()).unwrap();
   let cr = CrateType::from_tree(&decoded);
-  println!("{:?}", cr);
+  println!("{}", cr.to_js(0));
 }

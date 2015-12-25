@@ -1,10 +1,13 @@
 all: build/rust-tokenizer build/rust-to-js
 
-.PHONY: all clean
+.PHONY: all clean test
 
 clean:
 	cargo clean
 	rm -rf build
+
+test: all
+	RUSTTOJS_PREFIX=./build/ ./runtests.sh
 
 build/lex.c:
 	mkdir -p build

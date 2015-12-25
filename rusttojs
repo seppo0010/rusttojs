@@ -1,2 +1,2 @@
 #!/bin/bash
-${RUSTTOJS_PREFIX}rust-tokenizer < $1 |${RUSTTOJS_PREFIX}rust-to-js # |node
+${RUSTTOJS_PREFIX}rust-tokenizer < $1 |${RUSTTOJS_PREFIX}rust-to-js
