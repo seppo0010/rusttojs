@@ -10,6 +10,22 @@ use serde_json::Value;
 
 use formatter::format_str;
 
+const KEYWORDS: &'static [&'static str] = &[
+  "abstract", "arguments", "boolean", "break", "byte",
+  "case", "catch", "char", "class*", "const",
+  "continue", "debugger", "default", "delete", "do",
+  "double", "else", "enum*", "eval", "export*",
+  "extends*", "false", "final", "finally", "float",
+  "for", "function", "goto", "if", "implements",
+  "import*", "in", "instanceof", "int", "interface",
+  "let", "long", "native", "new", "null",
+  "package", "private", "protected", "public", "return",
+  "short", "static", "super*", "switch", "synchronized",
+  "this", "throw", "throws", "transient", "true",
+  "try", "typeof", "var", "void", "volatile",
+  "while", "with", "yield",
+];
+
 trait TreeNode : Debug + Sized {
   fn get_name(&self) -> String;
   fn get_nodes(&self) -> Vec<Self>;
@@ -24,6 +40,10 @@ trait TreeNode : Debug + Sized {
       .get_node_by_name("ident").unwrap()
       .get_string_nodes().join("").to_owned()
   }
+}
+
+fn escape(s: &str) -> String {
+  format!("$rtj_{}", s)
 }
 
 impl TreeNode for Value {
@@ -662,10 +682,10 @@ impl PatType {
     }
   }
 
-  fn get_name(&self) -> &str {
+  fn get_name(&self) -> String {
     match *self {
-      PatType::PatLit(ref s) => s,
-      PatType::PatIdent(_, ref s) => s,
+      PatType::PatLit(ref s) => if KEYWORDS.contains(&&**s) { escape(&*s) } else { s.clone() },
+      PatType::PatIdent(_, ref s) => s.clone(),
     }
   }
 }
@@ -792,7 +812,7 @@ impl TokenTree {
 impl RustToJs for TokenTree {
   fn to_js(&self, indent: usize) -> String {
     match *self {
-      TokenTree::Tok(ref s) => s.clone(),
+      TokenTree::Tok(ref s) => if KEYWORDS.contains(&&**s) { escape(s) } else { s.clone() },
       TokenTree::TokenTrees(ref v) => v.iter().map(|t| t.to_js(indent)).collect::<Vec<_>>().join(" "),
     }
   }
