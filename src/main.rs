@@ -298,6 +298,8 @@ enum ExprType {
   ExprLit(ExprLitType),
   ExprCall(Box<ExprCallType>),
   ExprPath(String),
+  ExprAssign(Box<ExprType>, Box<ExprType>),
+  ExprBinary(String, Box<ExprType>, Box<ExprType>),
 }
 
 impl ExprType {
@@ -309,6 +311,13 @@ impl ExprType {
       "ExprLit" => ExprType::ExprLit(ExprLitType::from_tree(&value.get_nodes()[0])),
       "ExprCall" => ExprType::ExprCall(Box::new(ExprCallType::from_tree(value))),
       "ExprPath" => ExprType::ExprPath(value.get_components_ident_joined()),
+      "ExprAssign" => ExprType::ExprAssign(
+          Box::new(ExprType::from_tree(&value.get_nodes()[0])),
+          Box::new(ExprType::from_tree(&value.get_nodes()[1]))),
+      "ExprBinary" => ExprType::ExprBinary(
+          value.get_string_nodes().join(""),
+          Box::new(ExprType::from_tree(&value.get_nodes()[1])),
+          Box::new(ExprType::from_tree(&value.get_nodes()[2]))),
       _ => panic!("{:?}", value),
     }
   }
@@ -330,6 +339,19 @@ impl RustToJs for ExprType {
       ExprType::ExprRet(ref m) => m.to_js(indent),
       ExprType::ExprCall(ref e) => e.to_js(indent),
       ExprType::ExprPath(ref e) => e.clone(),
+      ExprType::ExprAssign(ref a, ref b) => format!(
+          "{}{} = {}",
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+          a.to_js(indent),
+          b.to_js(indent)),
+      ExprType::ExprBinary(ref op, ref a, ref b) => format!(
+          "{} {} {}",
+          a.to_js(indent),
+          match &**op {
+            "BiAdd" => "+",
+            _ => panic!("Unsupported op {}", op),
+          },
+          b.to_js(indent)),
     }
   }
 }
