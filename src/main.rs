@@ -370,6 +370,58 @@ impl RustToJs for BinaryOperation {
 }
 
 #[derive(Debug, Clone)]
+struct ExprAssignType {
+  target: Box<ExprType>,
+  source: Box<ExprType>,
+}
+impl ExprAssignType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    ExprAssignType {
+      target: Box::new(ExprType::from_tree(&value.get_nodes()[0])),
+      source: Box::new(ExprType::from_tree(&value.get_nodes()[1])),
+    }
+  }
+}
+
+impl RustToJs for ExprAssignType {
+  fn to_js(&self, indent: usize) -> String {
+      format!("{}{} = {}",
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+          self.target.to_js(0),
+          self.source.to_js(0))
+  }
+}
+
+#[derive(Debug, Clone)]
+struct ExprBinaryOpType {
+  operation: BinaryOperation,
+  lhs: Box<ExprType>,
+  rhs: Box<ExprType>,
+}
+
+impl ExprBinaryOpType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    ExprBinaryOpType {
+      operation: BinaryOperation::from_tree(value),
+      lhs: Box::new(ExprType::from_tree(&value.get_nodes()[1])),
+      rhs: Box::new(ExprType::from_tree(&value.get_nodes()[2])),
+    }
+  }
+}
+
+impl RustToJs for ExprBinaryOpType {
+  fn to_js(&self, indent: usize) -> String {
+    format!(
+        "{}{} {} {}",
+        iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+        self.lhs.to_js(0),
+        self.operation.to_js(0),
+        self.rhs.to_js(0)
+        )
+  }
+}
+
+#[derive(Debug, Clone)]
 enum ExprType {
   ExprMac(MacroType),
   DeclLocal(DeclLocalType),
@@ -377,8 +429,8 @@ enum ExprType {
   ExprLit(ExprLitType),
   ExprCall(Box<ExprCallType>),
   ExprPath(String),
-  ExprAssign(Box<ExprType>, Box<ExprType>),
-  ExprBinary(BinaryOperation, Box<ExprType>, Box<ExprType>),
+  ExprAssign(ExprAssignType),
+  ExprBinaryOp(ExprBinaryOpType),
   ExprIf(ExprIfType),
 }
 
@@ -391,13 +443,8 @@ impl ExprType {
       "ExprLit" => ExprType::ExprLit(ExprLitType::from_tree(&value.get_nodes()[0])),
       "ExprCall" => ExprType::ExprCall(Box::new(ExprCallType::from_tree(value))),
       "ExprPath" => ExprType::ExprPath(value.get_components_ident_joined()),
-      "ExprAssign" => ExprType::ExprAssign(
-          Box::new(ExprType::from_tree(&value.get_nodes()[0])),
-          Box::new(ExprType::from_tree(&value.get_nodes()[1]))),
-      "ExprBinary" => ExprType::ExprBinary(
-          BinaryOperation::from_tree(value),
-          Box::new(ExprType::from_tree(&value.get_nodes()[1])),
-          Box::new(ExprType::from_tree(&value.get_nodes()[2]))),
+      "ExprAssign" => ExprType::ExprAssign(ExprAssignType::from_tree(value)),
+      "ExprBinary" => ExprType::ExprBinaryOp(ExprBinaryOpType::from_tree(value)),
       "ExprIf" => ExprType::ExprIf(ExprIfType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
@@ -427,18 +474,9 @@ impl RustToJs for ExprType {
       ExprType::ExprRet(ref m) => m.to_js(indent),
       ExprType::ExprCall(ref e) => e.to_js(indent),
       ExprType::ExprIf(ref e) => e.to_js(indent),
+      ExprType::ExprAssign(ref e) => e.to_js(indent),
+      ExprType::ExprBinaryOp(ref e) => e.to_js(indent),
       ExprType::ExprPath(ref e) => e.clone(),
-      ExprType::ExprAssign(ref a, ref b) => format!(
-          "{}{} = {}",
-          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
-          a.to_js(0),
-          b.to_js(0)),
-      ExprType::ExprBinary(ref op, ref a, ref b) => format!(
-          "{}{} {} {}",
-          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
-          a.to_js(0),
-          op.to_js(0),
-          b.to_js(0)),
     }
   }
 }
