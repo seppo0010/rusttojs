@@ -205,7 +205,10 @@ impl ItemFn {
            )
         }).unwrap_or((vec![], None));
 
-    let return_type = fn_decl.1.clone();
+    let return_type = match fn_decl.1 {
+      Some(ref v) => ReturnType::Some(v.clone()),
+      None => ReturnType::None,
+    };
     ItemFn {
       name: name,
       generic_params: (Vec::new(), Vec::new()),
@@ -230,13 +233,29 @@ impl RustToJs for ItemFn {
 }
 
 #[derive(Debug, Clone)]
+enum ReturnType {
+  None,
+  Unknown,
+  Some(String),
+}
+
+impl ReturnType {
+  fn is_some(&self) -> bool {
+    match *self {
+      ReturnType::None => false,
+      _ => true,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
 struct BlockType {
   stmts: Vec<ExprType>,
-  return_type: Option<String>,
+  return_type: ReturnType,
 }
 
 impl BlockType {
-  fn from_tree<T: TreeNode>(value: Option<&T>, return_type: Option<String>) -> Self {
+  fn from_tree<T: TreeNode>(value: Option<&T>, return_type: ReturnType) -> Self {
     BlockType {
       stmts: value
         .map(|node| if node.maybe_get_nodes().and_then(|n| n.last().map(|n| n.get_name())) == Some("stmts".to_owned()) {
@@ -282,7 +301,7 @@ struct AttrsAndBlockType {
 }
 
 impl AttrsAndBlockType {
-  fn from_tree<T: TreeNode>(value: &T, return_type: Option<String>) -> Self {
+  fn from_tree<T: TreeNode>(value: &T, return_type: ReturnType) -> Self {
     AttrsAndBlockType {
       attrs: Vec::new(),
       block: BlockType::from_tree(value.get_node_by_name("ExprBlock"), return_type),
@@ -432,10 +451,11 @@ enum ExprType {
   ExprAssign(ExprAssignType),
   ExprBinaryOp(ExprBinaryOpType),
   ExprIf(ExprIfType),
+  ExprBlock(BlockType),
 }
 
 impl ExprType {
-  fn from_tree<T: TreeNode>(value: &T) -> Self {
+  fn from_tree_r<T: TreeNode>(value: &T, return_type: ReturnType) -> Self {
     match &*value.get_name() {
       "ExprMac" => ExprType::ExprMac(MacroType::from_tree(&value.get_nodes()[0])),
       "DeclLocal" => ExprType::DeclLocal(DeclLocalType::from_tree(value)),
@@ -446,8 +466,13 @@ impl ExprType {
       "ExprAssign" => ExprType::ExprAssign(ExprAssignType::from_tree(value)),
       "ExprBinary" => ExprType::ExprBinaryOp(ExprBinaryOpType::from_tree(value)),
       "ExprIf" => ExprType::ExprIf(ExprIfType::from_tree(value)),
+      "ExprBlock" => ExprType::ExprBlock(BlockType::from_tree(Some(value), return_type)),
       _ => panic!("{:?}", value),
     }
+  }
+
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    ExprType::from_tree_r(value, ReturnType::None)
   }
 
   fn is_ret(&self) -> bool {
@@ -476,6 +501,13 @@ impl RustToJs for ExprType {
       ExprType::ExprIf(ref e) => e.to_js(indent),
       ExprType::ExprAssign(ref e) => e.to_js(indent),
       ExprType::ExprBinaryOp(ref e) => e.to_js(indent),
+      ExprType::ExprBlock(ref e) =>
+        format!("(function() {}\n{}\n{}{})()",
+            "{",
+            e.to_js(indent + 1),
+            iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+            "}",
+            ),
       ExprType::ExprPath(ref e) => e.clone(),
     }
   }
@@ -492,7 +524,7 @@ impl ExprIfType {
     let nodes = value.get_nodes();
     ExprIfType {
       cond: Box::new(ExprType::from_tree(&nodes[0])),
-      true_block: Box::new(BlockType::from_tree(nodes.get(1), None)),
+      true_block: Box::new(BlockType::from_tree(nodes.get(1), ReturnType::None)),
     }
   }
 }
@@ -650,14 +682,18 @@ impl DeclLocalType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "DeclLocal");
     let pat = PatType::from_tree(&value.get_nodes()[0]);
+    let value_type: Option<String> = None;
 
     let initial_value = value.get_nodes()
       .get(2)
       .and_then(|node| if node.is_null() { None } else { Some(node) })
-      .map(|node| Box::new(ExprType::from_tree(node)));
+      .map(|node| Box::new(ExprType::from_tree_r(node, match value_type {
+              Some(ref v) => ReturnType::Some(v.clone()),
+              None => ReturnType::Unknown,
+              })));
     DeclLocalType {
       pat: pat,
-      value_type: None,
+      value_type: value_type,
       value: initial_value,
     }
   }
