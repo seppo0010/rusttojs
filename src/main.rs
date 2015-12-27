@@ -13,8 +13,17 @@ use formatter::format_str;
 trait TreeNode : Debug + Sized {
   fn get_name(&self) -> String;
   fn get_nodes(&self) -> Vec<Self>;
+  fn maybe_get_nodes(&self) -> Option<&Vec<Self>>;
   fn get_string_nodes(&self) -> Vec<String>;
   fn get_node_by_name(&self, name: &str) -> Option<&Self>;
+  fn is_null(&self) -> bool;
+
+  fn get_components_ident_joined(&self) -> String {
+    self
+      .get_node_by_name("components").unwrap()
+      .get_node_by_name("ident").unwrap()
+      .get_string_nodes().join("").to_owned()
+  }
 }
 
 impl TreeNode for Value {
@@ -30,10 +39,17 @@ impl TreeNode for Value {
           ).and_then(|nodes| nodes.iter().find(|x| x.get_name() == name))
   }
 
-  fn get_nodes(&self) -> Vec<Self> {
+  fn maybe_get_nodes(&self) -> Option<&Vec<Self>> {
     self.as_object().and_then(|map| map.get("nodes")
-        ).and_then(|nodes| nodes.as_array()
-          ).cloned().unwrap_or(Vec::new())
+        ).and_then(|nodes| nodes.as_array())
+  }
+
+  fn get_nodes(&self) -> Vec<Self> {
+    self.maybe_get_nodes().cloned().unwrap_or(Vec::new())
+  }
+
+  fn is_null(&self) -> bool {
+    self.is_null()
   }
 
   fn get_string_nodes(&self) -> Vec<String> {
@@ -45,17 +61,16 @@ impl TreeNode for Value {
 }
 
 trait RustToJs {
-  fn from_tree<T: TreeNode>(value: &T) -> Self;
   fn to_js(&self, indent: usize) -> String;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct CrateType {
   inner_attrs: Vec<AttrType>,
   mod_items: Vec<ModItemType>,
 }
 
-impl RustToJs for CrateType {
+impl CrateType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     let mod_items = value.get_nodes().into_iter().next().map(|items|
       items.get_nodes().into_iter().map(|item| ModItemType::from_tree(&item)).collect()).unwrap_or(Vec::new());
@@ -64,24 +79,26 @@ impl RustToJs for CrateType {
       mod_items: mod_items,
     }
   }
+}
 
+impl RustToJs for CrateType {
   fn to_js(&self, indent: usize) -> String {
     self.mod_items.iter().map(|item| item.to_js(indent)).collect::<Vec<_>>().join("\n")
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AttrType {
   doc_comment: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AttrsAndVisType {
   attrs: Option<String>,
   vis: String,
 }
 
-impl RustToJs for AttrsAndVisType {
+impl AttrsAndVisType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     let mut args = value.get_string_nodes();
     assert!(args.len() == 1 || args.len() == 2);
@@ -91,19 +108,21 @@ impl RustToJs for AttrsAndVisType {
       vis: vis,
     }
   }
+}
 
+impl RustToJs for AttrsAndVisType {
   fn to_js(&self, _indent: usize) -> String {
     "".to_owned()
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ModItemType {
   attrs_and_vis: AttrsAndVisType,
   item: ItemType,
 }
 
-impl RustToJs for ModItemType {
+impl ModItemType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "Item");
     let nodes = value.get_nodes();
@@ -113,19 +132,21 @@ impl RustToJs for ModItemType {
       item: ItemType::from_tree(&nodes[1]),
     }
   }
+}
 
+impl RustToJs for ModItemType {
   fn to_js(&self, indent: usize) -> String {
     self.item.to_js(indent)
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ItemType {
   ItemFn(ItemFn),
   ItemMacro(MacroExprType),
 }
 
-impl RustToJs for ItemType {
+impl ItemType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
       "ItemFn" => ItemType::ItemFn(ItemFn::from_tree(value)),
@@ -133,7 +154,9 @@ impl RustToJs for ItemType {
       _ => panic!("{:?}", value),
     }
   }
+}
 
+impl RustToJs for ItemType {
   fn to_js(&self, indent: usize) -> String {
     match *self {
       ItemType::ItemFn(ref i) => i.to_js(indent),
@@ -142,13 +165,13 @@ impl RustToJs for ItemType {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ParameterType {
   name: String,
   parameter_type: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ItemFn {
   name: String,
   generic_params: (Vec<String>, Vec<String>),
@@ -156,7 +179,7 @@ struct ItemFn {
   inner_attrs_and_block: AttrsAndBlockType,
 }
 
-impl RustToJs for ItemFn {
+impl ItemFn {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "ItemFn");
     let name = value.get_node_by_name("ident").unwrap()
@@ -168,27 +191,31 @@ impl RustToJs for ItemFn {
              args.get_nodes().iter().map(|arg| {
                let name = arg
                  .get_node_by_name("PatLit").unwrap()
-                 .get_node_by_name("components").unwrap()
-                 .get_node_by_name("ident").unwrap()
-                 .get_string_nodes().join("").to_owned();
+                 .get_components_ident_joined();
                let parameter_type = arg
                  .get_node_by_name("TySum").unwrap()
                  .get_node_by_name("TyPath").unwrap()
-                 .get_node_by_name("components").unwrap()
-                 .get_node_by_name("ident").unwrap()
-                 .get_string_nodes().join("").to_owned();
+                 .get_components_ident_joined();
                ParameterType { name: name, parameter_type: parameter_type }
                }).collect()
-             ).unwrap_or(vec![]), None)
+             ).unwrap_or(vec![]),
+           node.get_node_by_name("ret-ty")
+             .and_then(|node| node.get_node_by_name("TyPath"))
+             .map(|node| node.get_components_ident_joined())
+           )
         }).unwrap_or((vec![], None));
+
+    let return_type = fn_decl.1.clone();
     ItemFn {
       name: name,
       generic_params: (Vec::new(), Vec::new()),
       fn_decl: fn_decl,
-      inner_attrs_and_block: AttrsAndBlockType::from_tree(value),
+      inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
     }
   }
+}
 
+impl RustToJs for ItemFn {
   fn to_js(&self, indent: usize) -> String {
     let bl = self.inner_attrs_and_block.to_js(indent + 1);
     format!("function {}({}) {}\n{}{}{}",
@@ -202,120 +229,216 @@ impl RustToJs for ItemFn {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+struct BlockType {
+  stmts: Vec<ExprType>,
+  return_type: Option<String>,
+}
+
+impl BlockType {
+  fn from_tree<T: TreeNode>(value: &T, return_type: Option<String>) -> Self {
+    BlockType {
+      stmts: value.get_node_by_name("ExprBlock")
+        .map(|node| if node.maybe_get_nodes().and_then(|n| n.last().map(|n| n.get_name())) == Some("stmts".to_owned()) {
+          node.maybe_get_nodes().unwrap().last().unwrap().get_nodes()
+        } else {
+          node.get_nodes().pop().map(|x| vec![x]).unwrap_or(Vec::new())
+        })
+        .unwrap_or(vec![])
+        .into_iter()
+        .filter(|node| !node.is_null())
+        .map(|node| ExprType::from_tree(&node))
+        .collect(),
+      return_type: return_type,
+    }
+  }
+}
+
+impl RustToJs for BlockType {
+  fn to_js(&self, indent: usize) -> String {
+    let count = self.stmts.len();
+    self.stmts.iter().enumerate()
+      .map(|(i, s)| if self.return_type.is_some() && i == count - 1 && !s.is_ret() {
+          ExprRetType { value: Some(Box::new(s.clone())) }.to_js(indent)
+      } else {
+        s.to_js(indent)
+      })
+      .collect::<Vec<_>>()
+      .join(";\n")
+      .to_owned()
+  }
+}
+
+#[derive(Debug, Clone)]
 struct AttrsAndBlockType {
   attrs: Vec<AttrType>,
-  stmts: Vec<StmtType>,
+  block: BlockType
+}
+
+impl AttrsAndBlockType {
+  fn from_tree<T: TreeNode>(value: &T, return_type: Option<String>) -> Self {
+    AttrsAndBlockType {
+      attrs: Vec::new(),
+      block: BlockType::from_tree(value, return_type),
+    }
+  }
 }
 
 impl RustToJs for AttrsAndBlockType {
-  fn from_tree<T: TreeNode>(value: &T) -> Self {
-    AttrsAndBlockType {
-      attrs: Vec::new(),
-      stmts: value.get_node_by_name("ExprBlock")
-        .and_then(|node| node.get_node_by_name("stmts"))
-        .map(|node| node.get_nodes().iter().map(|node| StmtType::from_tree(node)).collect()
-            ).unwrap_or(Vec::new()),
-    }
-  }
-
   fn to_js(&self, indent: usize) -> String {
-    self.stmts.iter().map(|s| s.to_js(indent)).collect::<Vec<_>>().join(";\n").to_owned()
+    self.block.to_js(indent)
   }
 }
 
-#[derive(Debug)]
-enum StmtType {
+#[derive(Debug, Clone)]
+enum ExprType {
   ExprMac(MacroExprType),
   DeclLocal(DeclLocalType),
+  ExprRet(ExprRetType),
+  ExprLit(ExprLitType),
+  ExprCall(Box<ExprCallType>),
+  ExprPath(String),
 }
 
-impl RustToJs for StmtType {
+impl ExprType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
-      "ExprMac" => StmtType::ExprMac(MacroExprType::from_tree(&value.get_nodes()[0])),
-      "DeclLocal" => StmtType::DeclLocal(DeclLocalType::from_tree(value)),
+      "ExprMac" => ExprType::ExprMac(MacroExprType::from_tree(&value.get_nodes()[0])),
+      "DeclLocal" => ExprType::DeclLocal(DeclLocalType::from_tree(value)),
+      "ExprRet" => ExprType::ExprRet(ExprRetType::from_tree(value.get_nodes().first())),
+      "ExprLit" => ExprType::ExprLit(ExprLitType::from_tree(&value.get_nodes()[0])),
+      "ExprCall" => ExprType::ExprCall(Box::new(ExprCallType::from_tree(value))),
+      "ExprPath" => ExprType::ExprPath(value.get_components_ident_joined()),
       _ => panic!("{:?}", value),
     }
   }
 
-  fn to_js(&self, indent: usize) -> String {
+  fn is_ret(&self) -> bool {
     match *self {
-      StmtType::ExprMac(ref m) => m.to_js(indent),
-      StmtType::DeclLocal(ref m) => m.to_js(indent),
+      ExprType::ExprRet(_) => true,
+      _ => false,
     }
   }
 }
 
-#[derive(Debug)]
-enum ExprLit {
+impl RustToJs for ExprType {
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      ExprType::ExprMac(ref m) => m.to_js(indent),
+      ExprType::DeclLocal(ref m) => m.to_js(indent),
+      ExprType::ExprLit(ref m) => m.to_js(indent),
+      ExprType::ExprRet(ref m) => m.to_js(indent),
+      ExprType::ExprCall(ref e) => e.to_js(indent),
+      ExprType::ExprPath(ref e) => e.clone(),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+struct ExprRetType {
+  value: Option<Box<ExprType>>,
+}
+
+impl ExprRetType {
+  fn from_tree<T: TreeNode>(value: Option<&T>) -> Self {
+    ExprRetType {
+      value: value.map(|node| Box::new(ExprType::from_tree(node)))
+    }
+  }
+}
+
+impl RustToJs for ExprRetType {
+  fn to_js(&self, indent: usize) -> String {
+    match self.value {
+      Some(ref v) => format!("{}return {}",
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+          v.to_js(indent),
+          ),
+      None => format!("{}return",
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+          ),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+enum ExprLitType {
   LitInteger(String),
   LitStr(String),
 }
 
-impl RustToJs for ExprLit {
+impl ExprLitType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
-      "LitInteger" => ExprLit::LitInteger(value.get_string_nodes().join("").to_owned()),
-      "LitStr" => ExprLit::LitStr(value.get_string_nodes().join("").to_owned()),
+      "LitInteger" => ExprLitType::LitInteger(value.get_string_nodes().join("").to_owned()),
+      "LitStr" => ExprLitType::LitStr(value.get_string_nodes().join("").to_owned()),
       _ => panic!("{:?}", value),
     }
   }
+}
 
+impl RustToJs for ExprLitType {
   fn to_js(&self, _indent: usize) -> String {
     match *self {
-      ExprLit::LitInteger(ref e) => e.clone(),
-      ExprLit::LitStr(ref e) => e.clone(),
+      ExprLitType::LitInteger(ref e) => e.clone(),
+      ExprLitType::LitStr(ref e) => e.clone(),
     }
   }
 }
 
-#[derive(Debug)]
-enum ExprType {
-  ExprLit(ExprLit)
+#[derive(Debug, Clone)]
+struct ExprCallType {
+  function: ExprType,
+  parameters: Vec<ExprType>,
 }
 
-impl RustToJs for ExprType {
+impl ExprCallType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
-    match &*value.get_name() {
-      "ExprLit" => ExprType::ExprLit(ExprLit::from_tree(&value.get_nodes()[0])),
-      _ => panic!("{:?}", value),
-    }
-  }
-
-  fn to_js(&self, indent: usize) -> String {
-    match *self {
-      ExprType::ExprLit(ref e) => e.to_js(indent),
+    let nodes = value.get_nodes();
+    assert_eq!(nodes.len(), 2);
+    ExprCallType {
+      function: ExprType::from_tree(&nodes[0]),
+      parameters: nodes.get(1).map(|node| node.get_nodes().iter().map(|node| ExprType::from_tree(node)).collect()).unwrap_or(Vec::new())
     }
   }
 }
 
-#[derive(Debug)]
+impl RustToJs for ExprCallType {
+  fn to_js(&self, indent: usize) -> String {
+    format!("{}({})",
+        self.function.to_js(indent),
+        self.parameters.iter().map(|p| p.to_js(indent + 1)).collect::<Vec<_>>().join(", ")
+        )
+  }
+}
+
+#[derive(Debug, Clone)]
 struct DeclLocalType {
   name: String,
   value_type: Option<String>,
-  value: Option<ExprType>
+  value: Option<Box<ExprType>>,
 }
 
-impl RustToJs for DeclLocalType {
+impl DeclLocalType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "DeclLocal");
     let name = value
       .get_node_by_name("PatLit").unwrap()
-      .get_node_by_name("components").unwrap()
-      .get_node_by_name("ident").unwrap()
-      .get_string_nodes().join("").to_owned();
+      .get_components_ident_joined();
 
-    let initial_value = value
-      .get_node_by_name("ExprLit")
-      .map(|node| ExprType::from_tree(node));
+    let initial_value = value.get_nodes()
+      .get(2)
+      .and_then(|node| if node.is_null() { None } else { Some(node) })
+      .map(|node| Box::new(ExprType::from_tree(node)));
     DeclLocalType {
       name: name,
       value_type: None,
       value: initial_value,
     }
   }
+}
 
+impl RustToJs for DeclLocalType {
   fn to_js(&self, indent: usize) -> String {
     format!("{}var {}{}",
         iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
@@ -334,12 +457,9 @@ struct MacroExprType {
   delimited_token_trees: [TokenTree; 3],
 }
 
-impl RustToJs for MacroExprType {
+impl MacroExprType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
-    let path_expr = value
-      .get_node_by_name("components").unwrap()
-      .get_node_by_name("ident").unwrap()
-      .get_string_nodes().join("").to_owned();
+    let path_expr = value.get_components_ident_joined();
     let delimited_token_trees = value
       .get_node_by_name("TTDelim").unwrap()
       .get_nodes();
@@ -352,7 +472,9 @@ impl RustToJs for MacroExprType {
       ]
     }
   }
+}
 
+impl RustToJs for MacroExprType {
   fn to_js(&self, indent: usize) -> String {
     format!("{}{}",
         iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
@@ -364,6 +486,19 @@ impl RustToJs for MacroExprType {
             )
         }
     )
+  }
+}
+
+impl Clone for MacroExprType {
+  fn clone(&self) -> Self {
+    MacroExprType {
+      path_expr: self.path_expr.clone(),
+      delimited_token_trees: [
+        self.delimited_token_trees[0].clone(),
+        self.delimited_token_trees[1].clone(),
+        self.delimited_token_trees[2].clone(),
+      ],
+    }
   }
 }
 
@@ -382,7 +517,7 @@ impl TokenTree {
   }
 }
 
-impl RustToJs for TokenTree {
+impl TokenTree {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
       "TTTok" => TokenTree::Tok(value.get_string_nodes().join("")),
@@ -391,7 +526,9 @@ impl RustToJs for TokenTree {
       _ => panic!("{:?}", value),
     }
   }
+}
 
+impl RustToJs for TokenTree {
   fn to_js(&self, indent: usize) -> String {
     match *self {
       TokenTree::Tok(ref s) => s.clone(),
