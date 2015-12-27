@@ -223,7 +223,7 @@ impl RustToJs for ItemFn {
         self.fn_decl.0.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "),
         "{",
         bl,
-        if bl.len() == 0 { "" } else { ";\n" },
+        if bl.len() == 0 { "" } else { "\n" },
         "}"
         )
   }
@@ -236,9 +236,9 @@ struct BlockType {
 }
 
 impl BlockType {
-  fn from_tree<T: TreeNode>(value: &T, return_type: Option<String>) -> Self {
+  fn from_tree<T: TreeNode>(value: Option<&T>, return_type: Option<String>) -> Self {
     BlockType {
-      stmts: value.get_node_by_name("ExprBlock")
+      stmts: value
         .map(|node| if node.maybe_get_nodes().and_then(|n| n.last().map(|n| n.get_name())) == Some("stmts".to_owned()) {
           node.maybe_get_nodes().unwrap().last().unwrap().get_nodes()
         } else {
@@ -258,13 +258,19 @@ impl RustToJs for BlockType {
   fn to_js(&self, indent: usize) -> String {
     let count = self.stmts.len();
     self.stmts.iter().enumerate()
-      .map(|(i, s)| if self.return_type.is_some() && i == count - 1 && !s.is_ret() {
-          ExprRetType { value: Some(Box::new(s.clone())) }.to_js(indent)
-      } else {
-        s.to_js(indent)
+      .map(|(i, s)| {
+        if self.return_type.is_some() && i == count - 1 && !s.is_ret() {
+          format!("{};",
+            ExprRetType { value: Some(Box::new(s.clone())) }.to_js(indent))
+        } else {
+          format!("{}{}",
+            s.to_js(indent),
+            if s.use_semicolon() { ";" } else { "" }
+            )
+        }
       })
       .collect::<Vec<_>>()
-      .join(";\n")
+      .join("\n")
       .to_owned()
   }
 }
@@ -279,7 +285,7 @@ impl AttrsAndBlockType {
   fn from_tree<T: TreeNode>(value: &T, return_type: Option<String>) -> Self {
     AttrsAndBlockType {
       attrs: Vec::new(),
-      block: BlockType::from_tree(value, return_type),
+      block: BlockType::from_tree(value.get_node_by_name("ExprBlock"), return_type),
     }
   }
 }
@@ -373,6 +379,7 @@ enum ExprType {
   ExprPath(String),
   ExprAssign(Box<ExprType>, Box<ExprType>),
   ExprBinary(BinaryOperation, Box<ExprType>, Box<ExprType>),
+  ExprIf(ExprIfType),
 }
 
 impl ExprType {
@@ -391,6 +398,7 @@ impl ExprType {
           BinaryOperation::from_tree(value),
           Box::new(ExprType::from_tree(&value.get_nodes()[1])),
           Box::new(ExprType::from_tree(&value.get_nodes()[2]))),
+      "ExprIf" => ExprType::ExprIf(ExprIfType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -399,6 +407,13 @@ impl ExprType {
     match *self {
       ExprType::ExprRet(_) => true,
       _ => false,
+    }
+  }
+
+  fn use_semicolon(&self) -> bool {
+    match *self {
+      ExprType::ExprIf(_) => false,
+      _ => true,
     }
   }
 }
@@ -411,6 +426,7 @@ impl RustToJs for ExprType {
       ExprType::ExprLit(ref m) => m.to_js(indent),
       ExprType::ExprRet(ref m) => m.to_js(indent),
       ExprType::ExprCall(ref e) => e.to_js(indent),
+      ExprType::ExprIf(ref e) => e.to_js(indent),
       ExprType::ExprPath(ref e) => e.clone(),
       ExprType::ExprAssign(ref a, ref b) => format!(
           "{}{} = {}",
@@ -424,6 +440,37 @@ impl RustToJs for ExprType {
           op.to_js(0),
           b.to_js(0)),
     }
+  }
+}
+
+#[derive(Debug, Clone)]
+struct ExprIfType {
+  cond: Box<ExprType>,
+  true_block: Box<BlockType>,
+}
+
+impl ExprIfType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    let nodes = value.get_nodes();
+    ExprIfType {
+      cond: Box::new(ExprType::from_tree(&nodes[0])),
+      true_block: Box::new(BlockType::from_tree(nodes.get(1), None)),
+    }
+  }
+}
+
+impl RustToJs for ExprIfType {
+  fn to_js(&self, indent: usize) -> String {
+    let true_block = self.true_block.to_js(indent + 1);
+    format!("{}if ({}) {}\n{}{}{}{}",
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+          self.cond.to_js(0),
+          "{",
+          true_block,
+          if true_block.len() > 0 { "\n" } else { "" },
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
+          "}",
+        )
   }
 }
 

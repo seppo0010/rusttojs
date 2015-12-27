@@ -8,7 +8,7 @@ clean:
 
 test: all
 	RUSTTOJS_PREFIX=./build/ ./runtests.sh
-	@echo "OK"
+	@echo "SUCCESS"
 
 build/lex.c:
 	mkdir -p build
