@@ -143,14 +143,14 @@ impl RustToJs for ModItemType {
 #[derive(Debug, Clone)]
 enum ItemType {
   ItemFn(ItemFn),
-  ItemMacro(MacroExprType),
+  ItemMacro(MacroType),
 }
 
 impl ItemType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
       "ItemFn" => ItemType::ItemFn(ItemFn::from_tree(value)),
-      "ItemMacro" => ItemType::ItemMacro(MacroExprType::from_tree(value)),
+      "ItemMacro" => ItemType::ItemMacro(MacroType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -292,7 +292,7 @@ impl RustToJs for AttrsAndBlockType {
 
 #[derive(Debug, Clone)]
 enum ExprType {
-  ExprMac(MacroExprType),
+  ExprMac(MacroType),
   DeclLocal(DeclLocalType),
   ExprRet(ExprRetType),
   ExprLit(ExprLitType),
@@ -303,7 +303,7 @@ enum ExprType {
 impl ExprType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
-      "ExprMac" => ExprType::ExprMac(MacroExprType::from_tree(&value.get_nodes()[0])),
+      "ExprMac" => ExprType::ExprMac(MacroType::from_tree(&value.get_nodes()[0])),
       "DeclLocal" => ExprType::DeclLocal(DeclLocalType::from_tree(value)),
       "ExprRet" => ExprType::ExprRet(ExprRetType::from_tree(value.get_nodes().first())),
       "ExprLit" => ExprType::ExprLit(ExprLitType::from_tree(&value.get_nodes()[0])),
@@ -492,18 +492,18 @@ impl RustToJs for DeclLocalType {
 }
 
 #[derive(Debug)]
-struct MacroExprType {
+struct MacroType {
   path_expr: String,
   delimited_token_trees: [TokenTree; 3],
 }
 
-impl MacroExprType {
+impl MacroType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     let path_expr = value.get_components_ident_joined();
     let delimited_token_trees = value
       .get_node_by_name("TTDelim").unwrap()
       .get_nodes();
-    MacroExprType {
+    MacroType {
       path_expr: path_expr,
       delimited_token_trees: [
         TokenTree::from_tree(&delimited_token_trees[0]),
@@ -514,7 +514,7 @@ impl MacroExprType {
   }
 }
 
-impl RustToJs for MacroExprType {
+impl RustToJs for MacroType {
   fn to_js(&self, indent: usize) -> String {
     format!("{}{}",
         iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
@@ -529,9 +529,9 @@ impl RustToJs for MacroExprType {
   }
 }
 
-impl Clone for MacroExprType {
+impl Clone for MacroType {
   fn clone(&self) -> Self {
-    MacroExprType {
+    MacroType {
       path_expr: self.path_expr.clone(),
       delimited_token_trees: [
         self.delimited_token_trees[0].clone(),
