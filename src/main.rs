@@ -413,8 +413,50 @@ impl RustToJs for ExprCallType {
 }
 
 #[derive(Debug, Clone)]
+enum BindingType {
+  Ref,
+  RefMut,
+  Mut,
+}
+
+#[derive(Debug, Clone)]
+enum PatType {
+  PatLit(String),
+  PatIdent(BindingType, String),
+}
+
+impl PatType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    let nodes = value.get_nodes();
+    match &*value.get_name() {
+      "PatLit" => PatType::PatLit(value.get_components_ident_joined()),
+      "PatIdent" => PatType::PatIdent(match &*nodes[0].get_name() {
+        "BindByValue" => BindingType::Mut,
+        "BindByRef" => match &*nodes[0].get_name() {
+          "MutMutable" => BindingType::RefMut,
+          "MutImmutable" => BindingType::Ref,
+          _ => panic!("{:?}", value),
+        },
+        _ => panic!("{:?}", value),
+      },
+      value.get_node_by_name("ident").unwrap()
+        .get_string_nodes().join("").to_owned()),
+      _ => panic!("{:?}", value),
+    }
+  }
+
+  fn get_name(&self) -> &str {
+    match *self {
+      PatType::PatLit(ref s) => s,
+      PatType::PatIdent(_, ref s) => s,
+    }
+  }
+}
+
+
+#[derive(Debug, Clone)]
 struct DeclLocalType {
-  name: String,
+  pat: PatType,
   value_type: Option<String>,
   value: Option<Box<ExprType>>,
 }
@@ -422,16 +464,14 @@ struct DeclLocalType {
 impl DeclLocalType {
   fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "DeclLocal");
-    let name = value
-      .get_node_by_name("PatLit").unwrap()
-      .get_components_ident_joined();
+    let pat = PatType::from_tree(&value.get_nodes()[0]);
 
     let initial_value = value.get_nodes()
       .get(2)
       .and_then(|node| if node.is_null() { None } else { Some(node) })
       .map(|node| Box::new(ExprType::from_tree(node)));
     DeclLocalType {
-      name: name,
+      pat: pat,
       value_type: None,
       value: initial_value,
     }
@@ -442,7 +482,7 @@ impl RustToJs for DeclLocalType {
   fn to_js(&self, indent: usize) -> String {
     format!("{}var {}{}",
         iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
-        self.name,
+        self.pat.get_name(),
         match self.value {
           Some(ref v) => format!(" = {}", v.to_js(indent)),
           None => "".to_owned(),
