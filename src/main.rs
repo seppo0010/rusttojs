@@ -342,10 +342,11 @@ impl RustToJs for ExprType {
       ExprType::ExprAssign(ref a, ref b) => format!(
           "{}{} = {}",
           iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
-          a.to_js(indent),
-          b.to_js(indent)),
+          a.to_js(0),
+          b.to_js(0)),
       ExprType::ExprBinary(ref op, ref a, ref b) => format!(
-          "{} {} {}",
+          "{}{} {} {}",
+          iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
           a.to_js(indent),
           match &**op {
             "BiAdd" => "+",
