@@ -291,6 +291,79 @@ impl RustToJs for AttrsAndBlockType {
 }
 
 #[derive(Debug, Clone)]
+enum BinaryOperation {
+  BiOr,
+  BiAnd,
+  BiEq,
+  BiNe,
+  BiLt,
+  BiGt,
+  BiLe,
+  BiGe,
+  BiBitOr,
+  BiBitXor,
+  BiBitAnd,
+  BiShl,
+  BiShr,
+  BiAdd,
+  BiSub,
+  BiMul,
+  BiDiv,
+  BiRem,
+}
+
+impl BinaryOperation {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    match &*value.get_string_nodes().join("") {
+      "BiOr" => BinaryOperation::BiOr,
+      "BiAnd" => BinaryOperation::BiAnd,
+      "BiEq" => BinaryOperation::BiEq,
+      "BiNe" => BinaryOperation::BiNe,
+      "BiLt" => BinaryOperation::BiLt,
+      "BiGt" => BinaryOperation::BiGt,
+      "BiLe" => BinaryOperation::BiLe,
+      "BiGe" => BinaryOperation::BiGe,
+      "BiBitOr" => BinaryOperation::BiBitOr,
+      "BiBitXor" => BinaryOperation::BiBitXor,
+      "BiBitAnd" => BinaryOperation::BiBitAnd,
+      "BiShl" => BinaryOperation::BiShl,
+      "BiShr" => BinaryOperation::BiShr,
+      "BiAdd" => BinaryOperation::BiAdd,
+      "BiSub" => BinaryOperation::BiSub,
+      "BiMul" => BinaryOperation::BiMul,
+      "BiDiv" => BinaryOperation::BiDiv,
+      "BiRem" => BinaryOperation::BiRem,
+      _ => panic!("{:?}", value),
+    }
+  }
+}
+
+impl RustToJs for BinaryOperation {
+  fn to_js(&self, _indent: usize) -> String {
+    match *self {
+      BinaryOperation::BiOr => "||",
+      BinaryOperation::BiAnd => "&&",
+      BinaryOperation::BiEq => "===",
+      BinaryOperation::BiNe => "!=",
+      BinaryOperation::BiLt => "<",
+      BinaryOperation::BiGt => ">",
+      BinaryOperation::BiLe => "<=",
+      BinaryOperation::BiGe => ">=",
+      BinaryOperation::BiBitOr => "|",
+      BinaryOperation::BiBitXor => "^",
+      BinaryOperation::BiBitAnd => "&",
+      BinaryOperation::BiShl => "",
+      BinaryOperation::BiShr => "",
+      BinaryOperation::BiAdd => "+",
+      BinaryOperation::BiSub => "-",
+      BinaryOperation::BiMul => "*",
+      BinaryOperation::BiDiv => "/",
+      BinaryOperation::BiRem => "%",
+    }.to_owned()
+  }
+}
+
+#[derive(Debug, Clone)]
 enum ExprType {
   ExprMac(MacroType),
   DeclLocal(DeclLocalType),
@@ -299,7 +372,7 @@ enum ExprType {
   ExprCall(Box<ExprCallType>),
   ExprPath(String),
   ExprAssign(Box<ExprType>, Box<ExprType>),
-  ExprBinary(String, Box<ExprType>, Box<ExprType>),
+  ExprBinary(BinaryOperation, Box<ExprType>, Box<ExprType>),
 }
 
 impl ExprType {
@@ -315,7 +388,7 @@ impl ExprType {
           Box::new(ExprType::from_tree(&value.get_nodes()[0])),
           Box::new(ExprType::from_tree(&value.get_nodes()[1]))),
       "ExprBinary" => ExprType::ExprBinary(
-          value.get_string_nodes().join(""),
+          BinaryOperation::from_tree(value),
           Box::new(ExprType::from_tree(&value.get_nodes()[1])),
           Box::new(ExprType::from_tree(&value.get_nodes()[2]))),
       _ => panic!("{:?}", value),
@@ -347,12 +420,9 @@ impl RustToJs for ExprType {
       ExprType::ExprBinary(ref op, ref a, ref b) => format!(
           "{}{} {} {}",
           iter::repeat("  ").take(indent).collect::<Vec<_>>().join(""),
-          a.to_js(indent),
-          match &**op {
-            "BiAdd" => "+",
-            _ => panic!("Unsupported op {}", op),
-          },
-          b.to_js(indent)),
+          a.to_js(0),
+          op.to_js(0),
+          b.to_js(0)),
     }
   }
 }
@@ -388,6 +458,7 @@ impl RustToJs for ExprRetType {
 enum ExprLitType {
   LitInteger(String),
   LitStr(String),
+  LitBool(bool),
 }
 
 impl ExprLitType {
@@ -395,6 +466,11 @@ impl ExprLitType {
     match &*value.get_name() {
       "LitInteger" => ExprLitType::LitInteger(value.get_string_nodes().join("").to_owned()),
       "LitStr" => ExprLitType::LitStr(value.get_string_nodes().join("").to_owned()),
+      "LitBool" => ExprLitType::LitBool(match &*value.get_string_nodes().join("") {
+        "true" => true,
+        "false" => false,
+        _ => panic!("{:?}", value),
+      }),
       _ => panic!("{:?}", value),
     }
   }
@@ -405,6 +481,7 @@ impl RustToJs for ExprLitType {
     match *self {
       ExprLitType::LitInteger(ref e) => e.clone(),
       ExprLitType::LitStr(ref e) => e.clone(),
+      ExprLitType::LitBool(b) => { if b { "true" } else { "false" } }.to_owned()
     }
   }
 }
