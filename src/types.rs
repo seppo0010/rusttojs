@@ -191,42 +191,6 @@ impl DeclLocalType {
   }
 }
 
-#[derive(Debug)]
-pub struct MacroType {
-  pub path_expr: String,
-  pub delimited_token_trees: [TokenTree; 3],
-}
-
-impl MacroType {
-  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
-    let path_expr = value.get_components_ident_joined();
-    let delimited_token_trees = value
-      .get_node_by_name("TTDelim").unwrap()
-      .get_nodes();
-    MacroType {
-      path_expr: path_expr,
-      delimited_token_trees: [
-        TokenTree::from_tree(&delimited_token_trees[0]),
-        TokenTree::from_tree(&delimited_token_trees[1]),
-        TokenTree::from_tree(&delimited_token_trees[2]),
-      ]
-    }
-  }
-}
-
-impl Clone for MacroType {
-  fn clone(&self) -> Self {
-    MacroType {
-      path_expr: self.path_expr.clone(),
-      delimited_token_trees: [
-        self.delimited_token_trees[0].clone(),
-        self.delimited_token_trees[1].clone(),
-        self.delimited_token_trees[2].clone(),
-      ],
-    }
-  }
-}
-
 #[derive(Debug, Clone)]
 pub enum TokenTree {
   Tok(String),

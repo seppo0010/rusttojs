@@ -1,9 +1,9 @@
 use std::iter;
 
 use items::{CrateType, ModItemType, ItemType, ItemFn};
-use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprLitType, ExprCallType};
+use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprLitType, ExprCallType, MacroType};
 use formatter::format_str;
-use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, MacroType, PatType, TokenTree};
+use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
 
 const KEYWORDS: &'static [&'static str] = &[
   "abstract", "arguments", "boolean", "break", "byte",

@@ -1,5 +1,6 @@
 use super::TreeNode;
-use types::{AttrsAndVisType, AttrsAndBlockType, MacroType, ReturnType, AttrType};
+use exprs::MacroType;
+use types::{AttrsAndVisType, AttrsAndBlockType, ReturnType, AttrType};
 
 #[derive(Debug, Clone)]
 pub struct CrateType {
