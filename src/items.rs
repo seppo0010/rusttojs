@@ -194,6 +194,7 @@ pub enum ItemType {
   ItemStruct(StructType),
   ItemMacro(MacroType),
   ItemImpl(ImplType),
+  ViewItemExternCrate(ViewItemExternCrateType),
 }
 
 impl ItemType {
@@ -203,6 +204,7 @@ impl ItemType {
       "ItemMacro" => ItemType::ItemMacro(MacroType::from_tree(value)),
       "ItemStruct" => ItemType::ItemStruct(StructType::from_tree(value)),
       "ItemImpl" => ItemType::ItemImpl(ImplType::from_tree(value)),
+      "ViewItemExternCrate" => ItemType::ViewItemExternCrate(ViewItemExternCrateType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -257,6 +259,23 @@ impl ItemFn {
       generic_params: (Vec::new(), Vec::new()),
       fn_decl: fn_decl,
       inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ViewItemExternCrateType {
+  pub name: String,
+  pub local_name: Option<String>,
+}
+
+impl ViewItemExternCrateType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    let nodes = value.get_nodes();
+    assert!(nodes.len() == 1 || nodes.len() == 2);
+    ViewItemExternCrateType {
+      name: nodes[0].get_string_nodes().join(""),
+      local_name: nodes.get(1).map(|node| node.get_string_nodes().join("")),
     }
   }
 }

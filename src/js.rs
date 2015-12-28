@@ -1,6 +1,6 @@
 use std::iter;
 
-use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFn, StructType};
+use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFn, StructType, ViewItemExternCrateType};
 use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType};
 use formatter::format_str;
 use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
@@ -161,6 +161,7 @@ impl RustToJs for ItemType {
       ItemType::ItemMacro(ref i) => i.to_js(indent),
       ItemType::ItemStruct(ref i) => i.to_js(indent),
       ItemType::ItemImpl(ref i) => i.to_js(indent),
+      ItemType::ViewItemExternCrate(ref i) => i.to_js(indent),
     }
   }
 }
@@ -283,6 +284,17 @@ impl RustToJs for StructType {
             )).collect::<Vec<_>>().join(""),
         "}",
     )
+  }
+}
+
+impl RustToJs for ViewItemExternCrateType {
+  fn to_js(&self, indent: usize) -> String {
+    let local_name = self.local_name.clone().unwrap_or(self.name.clone());
+    format!("{}var {} = require('{}');",
+        indentation(indent),
+        escape(&*local_name),
+        self.name,
+        )
   }
 }
 
