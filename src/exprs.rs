@@ -1,5 +1,5 @@
 use super::TreeNode;
-use types::{BinaryOperation, DeclLocalType, BlockType, ReturnType, TokenTree};
+use types::{BinaryOperation, DeclLocalType, BlockType, FieldInitType, ReturnType, TokenTree};
 
 #[derive(Debug, Clone)]
 pub struct ExprAssignType {
@@ -39,11 +39,12 @@ pub enum ExprType {
   ExprRet(ExprRetType),
   ExprLit(ExprLitType),
   ExprCall(Box<ExprCallType>),
-  ExprPath(String),
+  ExprPath(Vec<String>),
   ExprAssign(ExprAssignType),
   ExprBinaryOp(ExprBinaryOpType),
   ExprIf(ExprIfType),
   ExprBlock(BlockType),
+  ExprStruct(ExprStructType),
 }
 
 impl ExprType {
@@ -54,11 +55,12 @@ impl ExprType {
       "ExprRet" => ExprType::ExprRet(ExprRetType::from_tree(value.get_nodes().first())),
       "ExprLit" => ExprType::ExprLit(ExprLitType::from_tree(&value.get_nodes()[0])),
       "ExprCall" => ExprType::ExprCall(Box::new(ExprCallType::from_tree(value))),
-      "ExprPath" => ExprType::ExprPath(value.get_components_ident_joined()),
+      "ExprPath" => ExprType::ExprPath(value.get_components_ident()),
       "ExprAssign" => ExprType::ExprAssign(ExprAssignType::from_tree(value)),
       "ExprBinary" => ExprType::ExprBinaryOp(ExprBinaryOpType::from_tree(value)),
       "ExprIf" => ExprType::ExprIf(ExprIfType::from_tree(value)),
       "ExprBlock" => ExprType::ExprBlock(BlockType::from_tree(Some(value), return_type)),
+      "ExprStruct" => ExprType::ExprStruct(ExprStructType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -78,6 +80,29 @@ impl ExprType {
     match *self {
       ExprType::ExprIf(_) => false,
       _ => true,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprStructType {
+  pub name: String,
+  pub fields: Vec<FieldInitType>,
+}
+
+impl ExprStructType {
+  fn from_tree<T: TreeNode>(value: &T) -> Self {
+    ExprStructType {
+      name: value.get_components_ident_joined(),
+      fields: value.get_node_by_name("FieldInits")
+        .map(|node| node.get_nodes().iter().map(|field| {
+          FieldInitType {
+            name: field.get_node_by_name("ident").unwrap()
+              .get_string_nodes().join(""),
+            value: ExprType::from_tree(&field.get_nodes()[1]),
+          }
+        }).collect::<Vec<_>>())
+        .unwrap_or(vec![]),
     }
   }
 }
@@ -158,13 +183,13 @@ impl ExprCallType {
 
 #[derive(Debug)]
 pub struct MacroType {
-  pub path_expr: String,
+  pub path_expr: Vec<String>,
   pub delimited_token_trees: [TokenTree; 3],
 }
 
 impl MacroType {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
-    let path_expr = value.get_components_ident_joined();
+    let path_expr = value.get_components_ident();
     let delimited_token_trees = value
       .get_node_by_name("TTDelim").unwrap()
       .get_nodes();

@@ -22,6 +22,16 @@ pub trait TreeNode : Debug + Sized {
   fn get_node_by_name(&self, name: &str) -> Option<&Self>;
   fn is_null(&self) -> bool;
 
+  fn get_components_ident(&self) -> Vec<String> {
+    self
+      .get_node_by_name("components").unwrap()
+      .get_nodes().iter()
+      .map(|node|
+        node.get_string_nodes().join("")
+      )
+      .collect()
+  }
+
   fn get_components_ident_joined(&self) -> String {
     self
       .get_node_by_name("components").unwrap()

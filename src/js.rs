@@ -1,7 +1,7 @@
 use std::iter;
 
-use items::{CrateType, ModItemType, ItemType, ItemFn};
-use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprLitType, ExprCallType, MacroType};
+use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFn, StructType};
+use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType};
 use formatter::format_str;
 use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
 
@@ -22,7 +22,7 @@ const KEYWORDS: &'static [&'static str] = &[
 ];
 
 fn escape(s: &str) -> String {
-  format!("$rtj_{}", s)
+  if KEYWORDS.contains(&&*s) { format!("$rtj_{}", s) } else { s.to_owned() }
 }
 
 fn indentation(indent: usize) -> String {
@@ -64,6 +64,7 @@ impl RustToJs for ExprType {
       ExprType::ExprCall(ref e) => e.to_js(indent),
       ExprType::ExprIf(ref e) => e.to_js(indent),
       ExprType::ExprAssign(ref e) => e.to_js(indent),
+      ExprType::ExprStruct(ref e) => e.to_js(indent),
       ExprType::ExprBinaryOp(ref e) => e.to_js(indent),
       ExprType::ExprBlock(ref e) =>
         format!("(function() {}\n{}\n{}{})()",
@@ -72,7 +73,7 @@ impl RustToJs for ExprType {
             indentation(indent),
             "}",
             ),
-      ExprType::ExprPath(ref e) => e.clone(),
+      ExprType::ExprPath(ref e) => e.iter().map(|s| escape(s)).collect::<Vec<_>>().join("."),
     }
   }
 }
@@ -88,6 +89,22 @@ impl RustToJs for ExprIfType {
           if true_block.len() > 0 { "\n" } else { "" },
           indentation(indent),
           "}",
+        )
+  }
+}
+
+impl RustToJs for ExprStructType {
+  fn to_js(&self, indent: usize) -> String {
+    format!("new {}({}\n{}\n{}{})",
+        self.name,
+        "{",
+        self.fields.iter().map(|field| format!("{}{}: {},",
+            indentation(indent + 1),
+            field.name,
+            field.value.to_js(0),
+            )).collect::<Vec<_>>().join("\n"),
+        indentation(indent),
+        "}",
         )
   }
 }
@@ -142,6 +159,8 @@ impl RustToJs for ItemType {
     match *self {
       ItemType::ItemFn(ref i) => i.to_js(indent),
       ItemType::ItemMacro(ref i) => i.to_js(indent),
+      ItemType::ItemStruct(ref i) => i.to_js(indent),
+      ItemType::ItemImpl(ref i) => i.to_js(indent),
     }
   }
 }
@@ -223,7 +242,7 @@ impl RustToJs for DeclLocalType {
     format!("{}var {}{}",
         indentation(indent),
         match self.pat {
-          PatType::PatLit(ref s) => if KEYWORDS.contains(&&**s) { escape(&*s) } else { s.clone() },
+          PatType::PatLit(ref s) => escape(&*s),
           PatType::PatIdent(_, ref s) => s.clone(),
         },
         match self.value {
@@ -236,12 +255,13 @@ impl RustToJs for DeclLocalType {
 
 impl RustToJs for MacroType {
   fn to_js(&self, indent: usize) -> String {
+    let joined_path = self.path_expr.iter().map(|s| escape(s)).collect::<Vec<_>>().join(".");
     format!("{}{}",
         indentation(indent),
-        match &*self.path_expr {
+        match &*joined_path {
           "println" => format!("console.log({})", format_str(&self.delimited_token_trees[1])),
           _ => format!("{}({})",
-            self.path_expr,
+            joined_path,
             self.delimited_token_trees[1].to_js(indent)
             )
         }
@@ -249,10 +269,63 @@ impl RustToJs for MacroType {
   }
 }
 
+impl RustToJs for StructType {
+  fn to_js(&self, indent: usize) -> String {
+    format!("{}var {} = function(values) {}\n{}{};",
+        indentation(indent),
+        self.name,
+        "{",
+        self.fields.iter().map(|field| format!(
+            "{}this.{} = values.{};\n",
+            indentation(indent + 1),
+            field.name,
+            field.name
+            )).collect::<Vec<_>>().join(""),
+        "}",
+    )
+  }
+}
+
+impl RustToJs for ImplItemType {
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      ImplItemType::ImplMethod(ref s) => s.to_js(indent),
+    }
+  }
+}
+
+impl RustToJs for ImplMethodType {
+  fn to_js(&self, indent: usize) -> String {
+    let bl = self.inner_attrs_and_block.to_js(indent + 1);
+    format!("function {}({}) {}\n{}{}{}",
+        escape(&*self.name),
+        self.fn_decl.0.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "),
+        "{",
+        bl,
+        if bl.len() == 0 { "" } else { "\n" },
+        "}"
+        )
+  }
+}
+
+impl RustToJs for ImplType {
+  fn to_js(&self, indent: usize) -> String {
+    self.items.iter().map(|item| {
+      let name = item.get_name();
+        format!("{}.{}{} = {};",
+          self.name,
+          if item.is_static() { "" } else { "prototype." },
+          escape(&*name),
+          item.to_js(indent)
+          )
+        }).collect::<Vec<_>>().join("")
+  }
+}
+
 impl RustToJs for TokenTree {
   fn to_js(&self, indent: usize) -> String {
     match *self {
-      TokenTree::Tok(ref s) => if KEYWORDS.contains(&&**s) { escape(s) } else { s.clone() },
+      TokenTree::Tok(ref s) => escape(s),
       TokenTree::TokenTrees(ref v) => v.iter().map(|t| t.to_js(indent)).collect::<Vec<_>>().join(" "),
     }
   }

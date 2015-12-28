@@ -38,9 +38,162 @@ impl ModItemType {
 }
 
 #[derive(Debug, Clone)]
+pub struct ImplMethodType {
+  pub attrs_and_vis: AttrsAndVisType,
+  pub is_static: bool,
+  pub is_unsafe: bool,
+  pub name: String,
+  pub generic_params: (Vec<String>, Vec<String>),
+  pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
+  pub where_clause: Vec<String>,
+  pub inner_attrs_and_block: AttrsAndBlockType,
+}
+
+impl ImplMethodType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    let fn_decl_node = value.get_node_by_name("FnDecl").unwrap();
+    let is_static = fn_decl_node.get_node_by_name("SelfStatic").is_some();
+    let fn_decl: (Vec<ParameterType>, Option<Vec<String>>) = {
+      (fn_decl_node.get_nodes()[0].get_nodes()[0].get_nodes().iter().map(|arg| {
+         let name = arg
+           .get_node_by_name("PatLit").unwrap()
+           .get_components_ident_joined();
+         let parameter_type = arg
+           .get_node_by_name("TySum").unwrap()
+           .get_node_by_name("TyPath").unwrap()
+           .get_components_ident();
+         ParameterType { name: name, parameter_type: parameter_type }
+         }).collect(),
+       fn_decl_node.get_node_by_name("ret-ty")
+         .and_then(|node| node.get_node_by_name("TyPath"))
+         .map(|node| node.get_components_ident())
+       )
+    };
+
+    let return_type = match fn_decl.1 {
+      Some(ref v) => ReturnType::Some(v.clone()),
+      None => ReturnType::None,
+    };
+
+    ImplMethodType {
+      attrs_and_vis: AttrsAndVisType::from_tree(value.get_node_by_name("AttrsAndVis").unwrap()),
+      is_static: is_static,
+      is_unsafe: !value.get_nodes()[1].is_null(),
+      name: value.get_node_by_name("ident").unwrap()
+        .get_string_nodes().into_iter().next().unwrap(),
+      generic_params: (vec![], vec![]),
+      where_clause: vec![],
+      fn_decl: fn_decl,
+      inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub enum ImplItemType {
+  ImplMethod(ImplMethodType)
+}
+
+impl ImplItemType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    match &*value.get_name() {
+      "Method" => ImplItemType::ImplMethod(ImplMethodType::from_tree(value)),
+      _ => panic!("{:?}", value),
+    }
+  }
+
+  pub fn get_name(&self) -> String {
+    match *self {
+      ImplItemType::ImplMethod(ref t) => t.name.clone(),
+    }
+  }
+
+  pub fn is_static(&self) -> bool {
+    match *self {
+      ImplItemType::ImplMethod(ref t) => t.is_static,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ImplType {
+  pub is_unsafe: bool,
+  pub name: String,
+  pub generic_params: (Vec<String>, Vec<String>),
+  pub attr: AttrType,
+  pub items: Vec<ImplItemType>
+}
+
+impl ImplType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    let nodes = value.get_nodes();
+    ImplType {
+      is_unsafe: !nodes[0].is_null(),
+      name: value
+        .get_node_by_name("TySum").unwrap()
+        .get_node_by_name("TyPath").unwrap()
+        .get_components_ident_joined(),
+      generic_params: (vec![], vec![]),
+      attr: AttrType { doc_comment: None },
+      items: value.get_node_by_name("ImplItems")
+        .map(|items| items.get_nodes().iter().map(|item| ImplItemType::from_tree(item)).collect())
+        .unwrap_or(vec![])
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct StructType {
+  pub name: String,
+  pub generic_params: (Vec<String>, Vec<String>),
+  pub where_clause: Vec<String>,
+  pub fields: Vec<StructFieldType>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldType {
+  pub attrs_and_vis: AttrsAndVisType,
+  pub name: String,
+  pub parameter_type: Vec<String>,
+}
+
+impl StructType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    assert_eq!(value.get_name(), "ItemStruct");
+    assert_eq!(value.get_nodes().len(), 4);
+    let name = value.get_node_by_name("ident").unwrap()
+      .get_string_nodes().into_iter().next().unwrap();
+    StructType {
+      name: name,
+      generic_params: (vec![], vec![]),
+      where_clause: vec![],
+      fields: value.get_node_by_name("StructFields")
+        .map(|fields| fields.get_nodes())
+        .unwrap_or(vec![])
+        .iter()
+        .map(|node| {
+          StructFieldType {
+            attrs_and_vis: AttrsAndVisType::from_tree(node.get_node_by_name("AttrsAndVis").unwrap()),
+            name: node
+              .get_node_by_name("ident").unwrap()
+              .get_string_nodes().join(""),
+            parameter_type: node
+              .get_node_by_name("TySum").unwrap()
+              .get_node_by_name("TyPath").unwrap()
+              .get_components_ident(),
+          }
+        })
+        .collect(),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
 pub enum ItemType {
   ItemFn(ItemFn),
+  ItemStruct(StructType),
   ItemMacro(MacroType),
+  ItemImpl(ImplType),
 }
 
 impl ItemType {
@@ -48,6 +201,8 @@ impl ItemType {
     match &*value.get_name() {
       "ItemFn" => ItemType::ItemFn(ItemFn::from_tree(value)),
       "ItemMacro" => ItemType::ItemMacro(MacroType::from_tree(value)),
+      "ItemStruct" => ItemType::ItemStruct(StructType::from_tree(value)),
+      "ItemImpl" => ItemType::ItemImpl(ImplType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -56,14 +211,14 @@ impl ItemType {
 #[derive(Debug, Clone)]
 pub struct ParameterType {
   pub name: String,
-  pub parameter_type: String,
+  pub parameter_type: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ItemFn {
   pub name: String,
   pub generic_params: (Vec<String>, Vec<String>),
-  pub fn_decl: (Vec<ParameterType>, Option<String>),
+  pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
   pub inner_attrs_and_block: AttrsAndBlockType,
 }
 
@@ -72,7 +227,7 @@ impl ItemFn {
     assert_eq!(value.get_name(), "ItemFn");
     let name = value.get_node_by_name("ident").unwrap()
       .get_string_nodes().into_iter().next().unwrap();
-    let fn_decl: (Vec<ParameterType>, Option<String>) = value.
+    let fn_decl: (Vec<ParameterType>, Option<Vec<String>>) = value.
       get_node_by_name("FnDecl").map(|node| {
           (node.get_node_by_name("Args")
            .map(|args|
@@ -83,13 +238,13 @@ impl ItemFn {
                let parameter_type = arg
                  .get_node_by_name("TySum").unwrap()
                  .get_node_by_name("TyPath").unwrap()
-                 .get_components_ident_joined();
+                 .get_components_ident();
                ParameterType { name: name, parameter_type: parameter_type }
                }).collect()
              ).unwrap_or(vec![]),
            node.get_node_by_name("ret-ty")
              .and_then(|node| node.get_node_by_name("TyPath"))
-             .map(|node| node.get_components_ident_joined())
+             .map(|node| node.get_components_ident())
            )
         }).unwrap_or((vec![], None));
 

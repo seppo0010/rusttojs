@@ -28,7 +28,7 @@ impl AttrsAndVisType {
 pub enum ReturnType {
   None,
   Unknown,
-  Some(String),
+  Some(Vec<String>),
 }
 
 impl ReturnType {
@@ -166,7 +166,7 @@ impl PatType {
 #[derive(Debug, Clone)]
 pub struct DeclLocalType {
   pub pat: PatType,
-  pub value_type: Option<String>,
+  pub value_type: Option<Vec<String>>,
   pub value: Option<Box<ExprType>>,
 }
 
@@ -174,7 +174,7 @@ impl DeclLocalType {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "DeclLocal");
     let pat = PatType::from_tree(&value.get_nodes()[0]);
-    let value_type: Option<String> = None;
+    let value_type: Option<Vec<String>> = None;
 
     let initial_value = value.get_nodes()
       .get(2)
@@ -215,4 +215,10 @@ impl TokenTree {
       _ => panic!("{:?}", value),
     }
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldInitType {
+  pub name: String,
+  pub value: ExprType,
 }
