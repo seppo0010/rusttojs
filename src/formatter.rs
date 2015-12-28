@@ -1,6 +1,7 @@
-use super::{TokenTree, RustToJs};
+use types::TokenTree;
+use js::RustToJs;
 
-fn parse_arguments(args: &Vec<TokenTree>) -> Vec<TokenTree> {
+pub fn parse_arguments(args: &Vec<TokenTree>) -> Vec<TokenTree> {
   let positions = args.iter().enumerate().fold(Vec::new(),
       |mut positions, (index, ref item)| {
         if item.get_string().map(|s| &**s) == Some(",") {
