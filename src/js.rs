@@ -1,6 +1,6 @@
 use std::iter;
 
-use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFn, StructType, ViewItemExternCrateType};
+use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFn, ModType, StructType, ViewItemExternCrateType};
 use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType};
 use formatter::format_str;
 use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
@@ -162,6 +162,7 @@ impl RustToJs for ItemType {
       ItemType::ItemStruct(ref i) => i.to_js(indent),
       ItemType::ItemImpl(ref i) => i.to_js(indent),
       ItemType::ViewItemExternCrate(ref i) => i.to_js(indent),
+      ItemType::ItemMod(ref i) => i.to_js(indent),
     }
   }
 }
@@ -331,6 +332,16 @@ impl RustToJs for ImplType {
           item.to_js(indent)
           )
         }).collect::<Vec<_>>().join("")
+  }
+}
+
+impl RustToJs for ModType {
+  fn to_js(&self, indent: usize) -> String {
+    format!("{}var {} = require('./{}');",
+      indentation(indent),
+      escape(&*self.name),
+      self.name,
+      )
   }
 }
 

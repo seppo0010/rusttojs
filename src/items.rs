@@ -195,6 +195,7 @@ pub enum ItemType {
   ItemMacro(MacroType),
   ItemImpl(ImplType),
   ViewItemExternCrate(ViewItemExternCrateType),
+  ItemMod(ModType),
 }
 
 impl ItemType {
@@ -205,6 +206,7 @@ impl ItemType {
       "ItemStruct" => ItemType::ItemStruct(StructType::from_tree(value)),
       "ItemImpl" => ItemType::ItemImpl(ImplType::from_tree(value)),
       "ViewItemExternCrate" => ItemType::ViewItemExternCrate(ViewItemExternCrateType::from_tree(value)),
+      "ItemMod" => ItemType::ItemMod(ModType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -276,6 +278,26 @@ impl ViewItemExternCrateType {
     ViewItemExternCrateType {
       name: nodes[0].get_string_nodes().join(""),
       local_name: nodes.get(1).map(|node| node.get_string_nodes().join("")),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModType {
+  pub name: String,
+}
+
+impl ModType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    assert_eq!(value.get_name(), "ItemMod");
+    ModType {
+      name: value
+        .get_nodes().iter()
+        .map(|node|
+          node.get_string_nodes().join("")
+        )
+        .collect::<Vec<_>>()
+        .join("")
     }
   }
 }
