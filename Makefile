@@ -12,13 +12,14 @@ test: all
 
 build/lex.c:
 	mkdir -p build
-	$(FLEX_PREFIX)flex -o build/lex.yy.c rust/src/grammar/lexer.l
+	wget "https://raw.githubusercontent.com/rust-lang/rust/4ce1dafd1d58852a88f38a0f63cb11236a7470cb/src/grammar/lexer.l" -O build/lexer.l
+	$(FLEX_PREFIX)flex -o build/lex.yy.c build/lexer.l
 	echo '#include "parser-lalr.tab.h"' > build/lex.c
 	cat build/lex.yy.c >> build/lex.c
 
 build/parser-lalr.y:
 	mkdir -p build
-	cp rust/src/grammar/parser-lalr.y build/
+	wget "https://raw.githubusercontent.com/rust-lang/rust/4ce1dafd1d58852a88f38a0f63cb11236a7470cb/src/grammar/parser-lalr.y" -O build/parser-lalr.y
 
 build/parser-lalr.tab.c: build/parser-lalr.y
 	$(BISON_PREFIX)bison build/parser-lalr.y --output=build/parser-lalr.tab.c --defines=build/parser-lalr.tab.h --name-prefix=rs -d
