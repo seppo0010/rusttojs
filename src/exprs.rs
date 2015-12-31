@@ -79,7 +79,7 @@ impl ExprType {
       ExprType::ExprAssign(ref e) => e.target.get_return_type(),
       ExprType::ExprBinaryOp(ref e) => e.return_type.clone(),
       ExprType::ExprIf(ref e) => e.return_type.clone(),
-      ExprType::ExprBlock(ref e) => e.return_type.clone(),
+      ExprType::ExprBlock(ref e) => e.get_return_type(),
       ExprType::ExprStruct(_) => ReturnType::None,
     }
   }
@@ -142,7 +142,7 @@ impl ExprIfType {
   }
 
   pub fn unknown_type_count(&self) -> u32 {
-    let c = if self.return_type.is_some() { 0 } else { 1 };
+    let c = if self.return_type.is_known() { 0 } else { 1 };
     c + self.cond.unknown_type_count() + self.true_block.unknown_type_count()
   }
 
@@ -195,7 +195,7 @@ impl ExprLitType {
 
   pub fn unknown_type_count(&self) -> u32 {
     match *self {
-      ExprLitType::LitInteger(_, ref t) => if t.is_some() { 0 } else { 1 },
+      ExprLitType::LitInteger(_, ref t) => if t.is_known() { 0 } else { 1 },
       _ => 0,
     }
   }
@@ -239,7 +239,7 @@ impl ExprCallType {
   }
 
   pub fn unknown_type_count(&self) -> u32 {
-    if self.return_type.is_some() { 0 } else { 1 }
+    if self.return_type.is_known() { 0 } else { 1 }
   }
 
   pub fn identify_types(&mut self) {
@@ -272,7 +272,7 @@ impl MacroType {
   }
 
   pub fn unknown_type_count(&self) -> u32 {
-    if self.return_type.is_some() { 0 } else { 1 }
+    if self.return_type.is_known() { 0 } else { 1 }
   }
 
   pub fn identify_types(&mut self) {
@@ -336,11 +336,11 @@ impl ExprBinaryOpType {
   }
 
   pub fn unknown_type_count(&self) -> u32 {
-    if self.return_type.is_some() { 0 } else { 1 }
+    if self.return_type.is_known() { 0 } else { 1 }
   }
 
   pub fn identify_types(&mut self) {
-    if self.return_type.is_some() {
+    if self.return_type.is_known() {
       return;
     }
     self.lhs.identify_types();

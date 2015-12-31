@@ -192,7 +192,7 @@ impl RustToJs for BlockType {
     let count = self.stmts.len();
     self.stmts.iter().enumerate()
       .map(|(i, s)| {
-        if self.return_type.is_some() && i == count - 1 && !s.is_ret() {
+        if self.get_return_type().is_some() && i == count - 1 && !s.is_ret() {
           format!("{};",
             ExprRetType::with_value(Some(Box::new(s.clone()))).to_js(indent))
         } else {

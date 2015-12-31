@@ -32,6 +32,13 @@ pub enum ReturnType {
 }
 
 impl ReturnType {
+  pub fn is_known(&self) -> bool {
+    match *self {
+      ReturnType::Unknown => false,
+      _ => true,
+    }
+  }
+
   pub fn is_some(&self) -> bool {
     match *self {
       ReturnType::None => false,
@@ -43,43 +50,40 @@ impl ReturnType {
 #[derive(Debug, Clone)]
 pub struct BlockType {
   pub stmts: Vec<ExprType>,
-  pub return_type: ReturnType,
 }
 
 impl BlockType {
   pub fn from_tree<T: TreeNode>(value: Option<&T>, return_type: ReturnType) -> Self {
+    let stmts: Vec<_> = value
+      .map(|node| if node.maybe_get_nodes().and_then(|n| n.last().map(|n| n.get_name())) == Some("stmts".to_owned()) {
+        node.maybe_get_nodes().unwrap().last().unwrap().get_nodes()
+      } else {
+        node.get_nodes().pop().map(|x| vec![x]).unwrap_or(Vec::new())
+      })
+      .unwrap_or(vec![])
+      .into_iter()
+      .filter(|node| !node.is_null())
+      .collect();
+    let count = stmts.len();
     BlockType {
-      stmts: value
-        .map(|node| if node.maybe_get_nodes().and_then(|n| n.last().map(|n| n.get_name())) == Some("stmts".to_owned()) {
-          node.maybe_get_nodes().unwrap().last().unwrap().get_nodes()
-        } else {
-          node.get_nodes().pop().map(|x| vec![x]).unwrap_or(Vec::new())
-        })
-        .unwrap_or(vec![])
-        .into_iter()
-        .filter(|node| !node.is_null())
-        .map(|node| ExprType::from_tree(&node))
+      stmts: stmts.into_iter()
+        .enumerate()
+        .map(|(i, node)| ExprType::from_tree_r(&node, if i + 1 == count { return_type.clone() } else { ReturnType::None }))
         .collect(),
-      return_type: return_type,
     }
   }
 
+  pub fn get_return_type(&self) -> ReturnType {
+    self.stmts.last().map(|x| x.get_return_type()).unwrap_or(ReturnType::None)
+  }
+
   pub fn unknown_type_count(&self) -> u32 {
-    let c = if self.return_type.is_some() { 0 } else { 1 };
-    c + self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
+    self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
   }
 
   pub fn identify_types(&mut self) {
     for stmt in self.stmts.iter_mut() {
       stmt.identify_types();
-    }
-    match self.return_type {
-      ReturnType::Unknown => self.return_type = if self.stmts.len() > 0 {
-        self.stmts.last().unwrap().get_return_type().clone()
-      } else {
-        ReturnType::None
-      },
-      _ => (),
     }
   }
 }
@@ -147,7 +151,7 @@ impl BinaryOperation {
   }
 
   pub fn get_return_type(&self, t1: ReturnType, t2: ReturnType) -> ReturnType {
-    if !t1.is_some() || !t2.is_some() {
+    if !t1.is_known() || !t2.is_known() {
       return ReturnType::Unknown;
     }
 
