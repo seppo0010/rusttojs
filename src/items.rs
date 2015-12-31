@@ -17,6 +17,10 @@ impl CrateType {
       mod_items: mod_items,
     }
   }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    self.mod_items.iter().fold(0, |acc, item| acc + item.unknown_type_count())
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +38,10 @@ impl ModItemType {
       attrs_and_vis: AttrsAndVisType::from_tree(&nodes[0]),
       item: ItemType::from_tree(&nodes[1]),
     }
+  }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    self.item.unknown_type_count()
   }
 }
 
@@ -113,6 +121,12 @@ impl ImplItemType {
       ImplItemType::ImplMethod(ref t) => t.is_static,
     }
   }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    match *self {
+      ImplItemType::ImplMethod(ref t) => t.inner_attrs_and_block.block.unknown_type_count(),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +153,10 @@ impl ImplType {
         .map(|items| items.get_nodes().iter().map(|item| ImplItemType::from_tree(item)).collect())
         .unwrap_or(vec![])
     }
+  }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    self.items.iter().fold(0, |acc, item| acc + item.unknown_type_count())
   }
 }
 
@@ -190,7 +208,7 @@ impl StructType {
 
 #[derive(Debug, Clone)]
 pub enum ItemType {
-  ItemFn(ItemFn),
+  ItemFn(ItemFnType),
   ItemStruct(StructType),
   ItemMacro(MacroType),
   ItemImpl(ImplType),
@@ -201,13 +219,24 @@ pub enum ItemType {
 impl ItemType {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
     match &*value.get_name() {
-      "ItemFn" => ItemType::ItemFn(ItemFn::from_tree(value)),
-      "ItemMacro" => ItemType::ItemMacro(MacroType::from_tree(value)),
+      "ItemFn" => ItemType::ItemFn(ItemFnType::from_tree(value)),
+      "ItemMacro" => ItemType::ItemMacro(MacroType::from_tree(value, ReturnType::None)),
       "ItemStruct" => ItemType::ItemStruct(StructType::from_tree(value)),
       "ItemImpl" => ItemType::ItemImpl(ImplType::from_tree(value)),
       "ViewItemExternCrate" => ItemType::ViewItemExternCrate(ViewItemExternCrateType::from_tree(value)),
       "ItemMod" => ItemType::ItemMod(ModType::from_tree(value)),
       _ => panic!("{:?}", value),
+    }
+  }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    match *self {
+      ItemType::ItemFn(ref i) => i.unknown_type_count(),
+      ItemType::ItemStruct(_) => 0,
+      ItemType::ItemMacro(_) => 0,
+      ItemType::ItemImpl(ref i) => i.unknown_type_count(),
+      ItemType::ViewItemExternCrate(_) => 0,
+      ItemType::ItemMod(_) => 0,
     }
   }
 }
@@ -219,14 +248,14 @@ pub struct ParameterType {
 }
 
 #[derive(Debug, Clone)]
-pub struct ItemFn {
+pub struct ItemFnType {
   pub name: String,
   pub generic_params: (Vec<String>, Vec<String>),
   pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
   pub inner_attrs_and_block: AttrsAndBlockType,
 }
 
-impl ItemFn {
+impl ItemFnType {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
     assert_eq!(value.get_name(), "ItemFn");
     let name = value.get_node_by_name("ident").unwrap()
@@ -256,12 +285,16 @@ impl ItemFn {
       Some(ref v) => ReturnType::Some(v.clone()),
       None => ReturnType::None,
     };
-    ItemFn {
+    ItemFnType {
       name: name,
       generic_params: (Vec::new(), Vec::new()),
       fn_decl: fn_decl,
       inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
     }
+  }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    self.inner_attrs_and_block.block.unknown_type_count()
   }
 }
 

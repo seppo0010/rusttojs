@@ -1,6 +1,6 @@
 use std::iter;
 
-use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFn, ModType, StructType, ViewItemExternCrateType};
+use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFnType, ModType, StructType, ViewItemExternCrateType};
 use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType};
 use formatter::format_str;
 use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
@@ -126,7 +126,7 @@ impl RustToJs for ExprRetType {
 impl RustToJs for ExprLitType {
   fn to_js(&self, _indent: usize) -> String {
     match *self {
-      ExprLitType::LitInteger(ref e) => e.clone(),
+      ExprLitType::LitInteger(ref e, _) => e.clone(),
       ExprLitType::LitStr(ref e) => e.clone(),
       ExprLitType::LitBool(b) => { if b { "true" } else { "false" } }.to_owned()
     }
@@ -167,7 +167,7 @@ impl RustToJs for ItemType {
   }
 }
 
-impl RustToJs for ItemFn {
+impl RustToJs for ItemFnType {
   fn to_js(&self, indent: usize) -> String {
     let bl = self.inner_attrs_and_block.to_js(indent + 1);
     format!("function {}({}) {}\n{}{}{}",

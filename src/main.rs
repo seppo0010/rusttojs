@@ -77,5 +77,6 @@ impl TreeNode for Value {
 fn main() {
   let decoded: Value = serde_json::from_reader(io::stdin()).unwrap();
   let cr = CrateType::from_tree(&decoded);
+  assert_eq!(cr.unknown_type_count(), 0);
   println!("{}", cr.to_js(0));
 }

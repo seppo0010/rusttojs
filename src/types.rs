@@ -63,6 +63,11 @@ impl BlockType {
       return_type: return_type,
     }
   }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    let c = if self.return_type.is_some() { 0 } else { 1 };
+    c + self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
+  }
 }
 
 #[derive(Debug, Clone)]
