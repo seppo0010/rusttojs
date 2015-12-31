@@ -24,7 +24,7 @@ impl AttrsAndVisType {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReturnType {
   None,
   Unknown,
@@ -67,6 +67,20 @@ impl BlockType {
   pub fn unknown_type_count(&self) -> u32 {
     let c = if self.return_type.is_some() { 0 } else { 1 };
     c + self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
+  }
+
+  pub fn identify_types(&mut self) {
+    for stmt in self.stmts.iter_mut() {
+      stmt.identify_types();
+    }
+    match self.return_type {
+      ReturnType::Unknown => self.return_type = if self.stmts.len() > 0 {
+        self.stmts.last().unwrap().get_return_type().clone()
+      } else {
+        ReturnType::None
+      },
+      _ => (),
+    }
   }
 }
 
@@ -131,6 +145,37 @@ impl BinaryOperation {
       _ => panic!("{:?}", value),
     }
   }
+
+  pub fn get_return_type(&self, t1: ReturnType, t2: ReturnType) -> ReturnType {
+    if !t1.is_some() || !t2.is_some() {
+      return ReturnType::Unknown;
+    }
+
+    if t1 != t2 {
+      panic!("Cannot apply {:?} to {:?} and {:?}", self, t1, t2);
+    }
+
+    match *self {
+      BinaryOperation::BiOr => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiAnd => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiEq => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiNe => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiLt => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiGt => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiLe => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiGe => ReturnType::Some(vec!["bool".to_owned()]),
+      BinaryOperation::BiBitOr => t1.clone(),
+      BinaryOperation::BiBitXor => t1.clone(),
+      BinaryOperation::BiBitAnd => t1.clone(),
+      BinaryOperation::BiShl => panic!("Unhandle operation shl"),
+      BinaryOperation::BiShr => panic!("Unhandle operation shr"),
+      BinaryOperation::BiAdd => t1.clone(),
+      BinaryOperation::BiSub => t1.clone(),
+      BinaryOperation::BiMul => t1.clone(),
+      BinaryOperation::BiDiv => t1.clone(),
+      BinaryOperation::BiRem => t1.clone(),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -192,6 +237,20 @@ impl DeclLocalType {
       pat: pat,
       value_type: value_type,
       value: initial_value,
+    }
+  }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    match self.value {
+      Some(ref x) => x.unknown_type_count(),
+      None => 0,
+    }
+  }
+
+  pub fn identify_types(&mut self) {
+    match self.value {
+      Some(ref mut x) => x.identify_types(),
+      None => (),
     }
   }
 }

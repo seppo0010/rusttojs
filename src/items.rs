@@ -12,14 +12,32 @@ impl CrateType {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
     let mod_items = value.get_nodes().into_iter().next().map(|items|
       items.get_nodes().into_iter().map(|item| ModItemType::from_tree(&item)).collect()).unwrap_or(Vec::new());
-    CrateType {
+    let mut krate = CrateType {
       inner_attrs: vec![],
       mod_items: mod_items,
-    }
+    };
+    krate.identify_types();
+    krate
   }
 
   pub fn unknown_type_count(&self) -> u32 {
     self.mod_items.iter().fold(0, |acc, item| acc + item.unknown_type_count())
+  }
+
+  pub fn identify_types(&mut self) {
+    loop {
+      let before = self.unknown_type_count();
+      for mod_item in self.mod_items.iter_mut() {
+        mod_item.identify_types();
+      }
+      let after = self.unknown_type_count();
+      if after == 0 {
+        break;
+      }
+      if before == after {
+        panic!("Cannot identify {} types in {:?}", after, self);
+      }
+    }
   }
 }
 
@@ -42,6 +60,10 @@ impl ModItemType {
 
   pub fn unknown_type_count(&self) -> u32 {
     self.item.unknown_type_count()
+  }
+
+  fn identify_types(&mut self) {
+    self.item.identify_types();
   }
 }
 
@@ -127,6 +149,12 @@ impl ImplItemType {
       ImplItemType::ImplMethod(ref t) => t.inner_attrs_and_block.block.unknown_type_count(),
     }
   }
+
+  fn identify_types(&mut self) {
+    match *self {
+      ImplItemType::ImplMethod(ref mut t) => t.inner_attrs_and_block.block.identify_types(),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +185,12 @@ impl ImplType {
 
   pub fn unknown_type_count(&self) -> u32 {
     self.items.iter().fold(0, |acc, item| acc + item.unknown_type_count())
+  }
+
+  pub fn identify_types(&mut self) {
+    for item in self.items.iter_mut() {
+      item.identify_types();
+    }
   }
 }
 
@@ -239,6 +273,17 @@ impl ItemType {
       ItemType::ItemMod(_) => 0,
     }
   }
+
+  pub fn identify_types(&mut self) {
+    match *self {
+      ItemType::ItemFn(ref mut i) => i.identify_types(),
+      ItemType::ItemStruct(_) => (),
+      ItemType::ItemMacro(_) => (),
+      ItemType::ItemImpl(ref mut i) => i.identify_types(),
+      ItemType::ViewItemExternCrate(_) => (),
+      ItemType::ItemMod(_) => (),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -295,6 +340,10 @@ impl ItemFnType {
 
   pub fn unknown_type_count(&self) -> u32 {
     self.inner_attrs_and_block.block.unknown_type_count()
+  }
+
+  pub fn identify_types(&mut self) {
+    self.inner_attrs_and_block.block.identify_types();
   }
 }
 

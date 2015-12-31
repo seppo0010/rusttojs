@@ -55,7 +55,7 @@ impl ExprType {
   pub fn unknown_type_count(&self) -> u32 {
     match *self {
       ExprType::ExprMac(ref e) => e.unknown_type_count(),
-      ExprType::DeclLocal(_) => 0,
+      ExprType::DeclLocal(ref e) => e.unknown_type_count(),
       ExprType::ExprRet(_) => 0,
       ExprType::ExprLit(ref e) => e.unknown_type_count(),
       ExprType::ExprCall(ref e) => e.unknown_type_count(),
@@ -65,6 +65,38 @@ impl ExprType {
       ExprType::ExprIf(ref e) => e.unknown_type_count(),
       ExprType::ExprBlock(ref e) => e.unknown_type_count(),
       ExprType::ExprStruct(_) => 0,
+    }
+  }
+
+  pub fn get_return_type(&self) -> ReturnType {
+    match *self {
+      ExprType::ExprMac(ref e) => e.return_type.clone(),
+      ExprType::DeclLocal(_) => ReturnType::None,
+      ExprType::ExprRet(_) => ReturnType::None,
+      ExprType::ExprLit(ref e) => e.get_return_type(),
+      ExprType::ExprCall(ref e) => e.return_type.clone(),
+      ExprType::ExprPath(ref e) => ReturnType::Some(e.clone()),
+      ExprType::ExprAssign(ref e) => e.target.get_return_type(),
+      ExprType::ExprBinaryOp(ref e) => e.return_type.clone(),
+      ExprType::ExprIf(ref e) => e.return_type.clone(),
+      ExprType::ExprBlock(ref e) => e.return_type.clone(),
+      ExprType::ExprStruct(_) => ReturnType::None,
+    }
+  }
+
+  pub fn identify_types(&mut self) {
+    match *self {
+      ExprType::ExprMac(ref mut e) => e.identify_types(),
+      ExprType::DeclLocal(ref mut e) => e.identify_types(),
+      ExprType::ExprRet(_) => (),
+      ExprType::ExprLit(ref mut e) => e.identify_types(),
+      ExprType::ExprCall(ref mut e) => e.identify_types(),
+      ExprType::ExprPath(_) => (),
+      ExprType::ExprAssign(ref mut e) => e.identify_types(),
+      ExprType::ExprBinaryOp(ref mut e) => e.identify_types(),
+      ExprType::ExprIf(ref mut e) => e.identify_types(),
+      ExprType::ExprBlock(ref mut e) => e.identify_types(),
+      ExprType::ExprStruct(_) => (),
     }
   }
 }
@@ -110,7 +142,14 @@ impl ExprIfType {
   }
 
   pub fn unknown_type_count(&self) -> u32 {
-    if self.return_type.is_some() { 0 } else { 1 }
+    let c = if self.return_type.is_some() { 0 } else { 1 };
+    c + self.cond.unknown_type_count() + self.true_block.unknown_type_count()
+  }
+
+  pub fn identify_types(&mut self) {
+    self.cond.identify_types();
+    self.true_block.identify_types();
+    self.return_type = self.return_type.clone();
   }
 }
 
@@ -160,6 +199,25 @@ impl ExprLitType {
       _ => 0,
     }
   }
+
+  fn get_return_type(&self) -> ReturnType {
+    match *self {
+      ExprLitType::LitBool(_) => ReturnType::Some(vec!["bool".to_owned()]),
+      ExprLitType::LitStr(_) => ReturnType::Some(vec!["&str".to_owned()]),
+      ExprLitType::LitInteger(_, ref t) => t.clone(),
+    }
+  }
+
+  pub fn identify_types(&mut self) {
+    match *self {
+      ExprLitType::LitBool(_) => return,
+      ExprLitType::LitStr(_) => return,
+      ExprLitType::LitInteger(_, ref mut t) => match *t {
+        ReturnType::Unknown => *t = ReturnType::Some(vec!["i16".to_owned()]),
+        _ => return,
+      }
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -182,6 +240,10 @@ impl ExprCallType {
 
   pub fn unknown_type_count(&self) -> u32 {
     if self.return_type.is_some() { 0 } else { 1 }
+  }
+
+  pub fn identify_types(&mut self) {
+    // TODO: needs crate to identify the function
   }
 }
 
@@ -212,6 +274,10 @@ impl MacroType {
   pub fn unknown_type_count(&self) -> u32 {
     if self.return_type.is_some() { 0 } else { 1 }
   }
+
+  pub fn identify_types(&mut self) {
+    // TODO
+  }
 }
 
 impl Clone for MacroType {
@@ -230,21 +296,24 @@ impl Clone for MacroType {
 
 #[derive(Debug, Clone)]
 pub struct ExprAssignType {
-  pub return_type: ReturnType,
   pub target: Box<ExprType>,
   pub source: Box<ExprType>,
 }
 impl ExprAssignType {
   fn from_tree<T: TreeNode>(value: &T, return_type: ReturnType) -> Self {
     ExprAssignType {
-      return_type: return_type,
-      target: Box::new(ExprType::from_tree(&value.get_nodes()[0])),
-      source: Box::new(ExprType::from_tree(&value.get_nodes()[1])),
+      target: Box::new(ExprType::from_tree_r(&value.get_nodes()[0], return_type.clone())),
+      source: Box::new(ExprType::from_tree_r(&value.get_nodes()[1], return_type)),
     }
   }
 
   pub fn unknown_type_count(&self) -> u32 {
-    if self.return_type.is_some() { 0 } else { 1 }
+    self.target.unknown_type_count() + self.source.unknown_type_count()
+  }
+
+  pub fn identify_types(&mut self) {
+    self.target.identify_types();
+    self.source.identify_types();
   }
 }
 
@@ -268,5 +337,14 @@ impl ExprBinaryOpType {
 
   pub fn unknown_type_count(&self) -> u32 {
     if self.return_type.is_some() { 0 } else { 1 }
+  }
+
+  pub fn identify_types(&mut self) {
+    if self.return_type.is_some() {
+      return;
+    }
+    self.lhs.identify_types();
+    self.rhs.identify_types();
+    self.operation.get_return_type(self.lhs.get_return_type(), self.rhs.get_return_type());
   }
 }
