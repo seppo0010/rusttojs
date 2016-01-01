@@ -39,6 +39,15 @@ impl CrateType {
       }
     }
   }
+
+  fn get_by_name(&self, name: &str) -> Option<&ModItemType> {
+    for item in self.mod_items.iter() {
+      if item.get_name() == Some(name) {
+        return Some(item)
+      }
+    }
+    None
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +73,10 @@ impl ModItemType {
 
   fn identify_types(&mut self) {
     self.item.identify_types();
+  }
+
+  fn get_name(&self) -> Option<&str> {
+    self.item.get_name()
   }
 }
 
@@ -282,6 +295,13 @@ impl ItemType {
       ItemType::ItemImpl(ref mut i) => i.identify_types(),
       ItemType::ViewItemExternCrate(_) => (),
       ItemType::ItemMod(_) => (),
+    }
+  }
+
+  pub fn get_name(&self) -> Option<&str> {
+    match *self {
+      ItemType::ItemFn(ref i) => Some(&*i.name),
+      _ => None,
     }
   }
 }
