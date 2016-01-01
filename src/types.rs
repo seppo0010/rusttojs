@@ -1,5 +1,6 @@
 use super::TreeNode;
 use exprs::ExprType;
+use items::CrateType;
 
 #[derive(Debug, Clone)]
 pub struct AttrType {
@@ -81,9 +82,9 @@ impl BlockType {
     self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
   }
 
-  pub fn identify_types(&mut self) {
+  pub fn identify_types(&mut self, krate: &CrateType) {
     for stmt in self.stmts.iter_mut() {
-      stmt.identify_types();
+      stmt.identify_types(krate);
     }
   }
 }
@@ -251,9 +252,9 @@ impl DeclLocalType {
     }
   }
 
-  pub fn identify_types(&mut self) {
+  pub fn identify_types(&mut self, krate: &CrateType) {
     match self.value {
-      Some(ref mut x) => x.identify_types(),
+      Some(ref mut x) => x.identify_types(krate),
       None => (),
     }
   }

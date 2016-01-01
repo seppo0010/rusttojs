@@ -1,4 +1,5 @@
 use super::TreeNode;
+use items::CrateType;
 use types::{BinaryOperation, DeclLocalType, BlockType, FieldInitType, ReturnType, TokenTree};
 
 #[derive(Debug, Clone)]
@@ -84,18 +85,18 @@ impl ExprType {
     }
   }
 
-  pub fn identify_types(&mut self) {
+  pub fn identify_types(&mut self, krate: &CrateType) {
     match *self {
       ExprType::ExprMac(ref mut e) => e.identify_types(),
-      ExprType::DeclLocal(ref mut e) => e.identify_types(),
+      ExprType::DeclLocal(ref mut e) => e.identify_types(krate),
       ExprType::ExprRet(_) => (),
       ExprType::ExprLit(ref mut e) => e.identify_types(),
-      ExprType::ExprCall(ref mut e) => e.identify_types(),
+      ExprType::ExprCall(ref mut e) => e.identify_types(krate),
       ExprType::ExprPath(_) => (),
-      ExprType::ExprAssign(ref mut e) => e.identify_types(),
-      ExprType::ExprBinaryOp(ref mut e) => e.identify_types(),
-      ExprType::ExprIf(ref mut e) => e.identify_types(),
-      ExprType::ExprBlock(ref mut e) => e.identify_types(),
+      ExprType::ExprAssign(ref mut e) => e.identify_types(krate),
+      ExprType::ExprBinaryOp(ref mut e) => e.identify_types(krate),
+      ExprType::ExprIf(ref mut e) => e.identify_types(krate),
+      ExprType::ExprBlock(ref mut e) => e.identify_types(krate),
       ExprType::ExprStruct(_) => (),
     }
   }
@@ -146,9 +147,9 @@ impl ExprIfType {
     c + self.cond.unknown_type_count() + self.true_block.unknown_type_count()
   }
 
-  pub fn identify_types(&mut self) {
-    self.cond.identify_types();
-    self.true_block.identify_types();
+  pub fn identify_types(&mut self, krate: &CrateType) {
+    self.cond.identify_types(krate);
+    self.true_block.identify_types(krate);
     self.return_type = self.return_type.clone();
   }
 }
@@ -242,8 +243,18 @@ impl ExprCallType {
     if self.return_type.is_known() { 0 } else { 1 }
   }
 
-  pub fn identify_types(&mut self) {
-    // TODO: needs crate to identify the function
+  pub fn identify_types(&mut self, krate: &CrateType) {
+    let return_type = match self.return_type {
+      ReturnType::Unknown => match self.function {
+        ExprType::ExprPath(ref path) => match krate.get_by_name(&*path[0]) {
+          Some(ref item) => item.get_return_type_for_path(&path[1..]),
+          None => panic!("{:?} {:?}", path, krate),
+        },
+        _ => panic!("{:?}", self.function),
+      },
+      _ => return,
+    };
+    self.return_type = return_type;
   }
 }
 
@@ -311,9 +322,9 @@ impl ExprAssignType {
     self.target.unknown_type_count() + self.source.unknown_type_count()
   }
 
-  pub fn identify_types(&mut self) {
-    self.target.identify_types();
-    self.source.identify_types();
+  pub fn identify_types(&mut self, krate: &CrateType) {
+    self.target.identify_types(krate);
+    self.source.identify_types(krate);
   }
 }
 
@@ -339,12 +350,12 @@ impl ExprBinaryOpType {
     if self.return_type.is_known() { 0 } else { 1 }
   }
 
-  pub fn identify_types(&mut self) {
+  pub fn identify_types(&mut self, krate: &CrateType) {
     if self.return_type.is_known() {
       return;
     }
-    self.lhs.identify_types();
-    self.rhs.identify_types();
+    self.lhs.identify_types(krate);
+    self.rhs.identify_types(krate);
     self.operation.get_return_type(self.lhs.get_return_type(), self.rhs.get_return_type());
   }
 }

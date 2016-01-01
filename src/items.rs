@@ -27,9 +27,11 @@ impl CrateType {
   pub fn identify_types(&mut self) {
     loop {
       let before = self.unknown_type_count();
-      for mod_item in self.mod_items.iter_mut() {
-        mod_item.identify_types();
+      let mut mod_items = self.mod_items.clone();
+      for mod_item in mod_items.iter_mut() {
+        mod_item.identify_types(self);
       }
+      self.mod_items = mod_items;
       let after = self.unknown_type_count();
       if after == 0 {
         break;
@@ -40,7 +42,7 @@ impl CrateType {
     }
   }
 
-  fn get_by_name(&self, name: &str) -> Option<&ModItemType> {
+  pub fn get_by_name(&self, name: &str) -> Option<&ModItemType> {
     for item in self.mod_items.iter() {
       if item.get_name() == Some(name) {
         return Some(item)
@@ -71,12 +73,26 @@ impl ModItemType {
     self.item.unknown_type_count()
   }
 
-  fn identify_types(&mut self) {
-    self.item.identify_types();
+  fn identify_types(&mut self, krate: &CrateType) {
+    self.item.identify_types(krate);
   }
 
   fn get_name(&self) -> Option<&str> {
     self.item.get_name()
+  }
+
+  pub fn get_return_type_for_path(&self, path: &[String]) -> ReturnType {
+    if path.len() == 0 {
+      match self.item {
+        ItemType::ItemFn(ref f) => match f.fn_decl.1 {
+          Some(ref r) => ReturnType::Some(r.clone()),
+          None => ReturnType::None,
+        },
+        _ => panic!("{:?} {:?}", self, path),
+      }
+    } else {
+      panic!("{:?} {:?}", self, path);
+    }
   }
 }
 
@@ -163,9 +179,9 @@ impl ImplItemType {
     }
   }
 
-  fn identify_types(&mut self) {
+  fn identify_types(&mut self, krate: &CrateType) {
     match *self {
-      ImplItemType::ImplMethod(ref mut t) => t.inner_attrs_and_block.block.identify_types(),
+      ImplItemType::ImplMethod(ref mut t) => t.inner_attrs_and_block.block.identify_types(krate),
     }
   }
 }
@@ -200,9 +216,9 @@ impl ImplType {
     self.items.iter().fold(0, |acc, item| acc + item.unknown_type_count())
   }
 
-  pub fn identify_types(&mut self) {
+  pub fn identify_types(&mut self, krate: &CrateType) {
     for item in self.items.iter_mut() {
-      item.identify_types();
+      item.identify_types(krate);
     }
   }
 }
@@ -287,12 +303,12 @@ impl ItemType {
     }
   }
 
-  pub fn identify_types(&mut self) {
+  pub fn identify_types(&mut self, krate: &CrateType) {
     match *self {
-      ItemType::ItemFn(ref mut i) => i.identify_types(),
+      ItemType::ItemFn(ref mut i) => i.identify_types(krate),
       ItemType::ItemStruct(_) => (),
       ItemType::ItemMacro(_) => (),
-      ItemType::ItemImpl(ref mut i) => i.identify_types(),
+      ItemType::ItemImpl(ref mut i) => i.identify_types(krate),
       ItemType::ViewItemExternCrate(_) => (),
       ItemType::ItemMod(_) => (),
     }
@@ -362,8 +378,8 @@ impl ItemFnType {
     self.inner_attrs_and_block.block.unknown_type_count()
   }
 
-  pub fn identify_types(&mut self) {
-    self.inner_attrs_and_block.block.identify_types();
+  pub fn identify_types(&mut self, krate: &CrateType) {
+    self.inner_attrs_and_block.block.identify_types(krate);
   }
 }
 
