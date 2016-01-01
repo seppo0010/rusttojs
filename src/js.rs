@@ -95,7 +95,8 @@ impl RustToJs for ExprIfType {
 
 impl RustToJs for ExprStructType {
   fn to_js(&self, indent: usize) -> String {
-    format!("new {}({}\n{}\n{}{})",
+    format!("{}return new {}({}\n{}\n{}{})",
+        indentation(indent),
         self.name,
         "{",
         self.fields.iter().map(|field| format!("{}{}: {},",

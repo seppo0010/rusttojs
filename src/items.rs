@@ -42,10 +42,30 @@ impl CrateType {
     }
   }
 
-  pub fn get_by_name(&self, name: &str) -> Option<&ModItemType> {
+  pub fn get_function_with_name(&self, name: &str) -> Option<&ItemFnType> {
     for item in self.mod_items.iter() {
       if item.get_name() == Some(name) {
-        return Some(item)
+        match item.item {
+          ItemType::ItemFn(ref f) => return Some(f),
+          _ => continue,
+        }
+      }
+    }
+    None
+  }
+
+  pub fn get_method_with_name(&self, struct_name: &str, method_name: &str) -> Option<&ImplMethodType> {
+    for item in self.mod_items.iter() {
+      if item.get_name() == Some(struct_name) {
+        match item.item {
+          ItemType::ItemImpl(ref f) => match f.items.iter().find(|item| item.get_name() == method_name) {
+            Some(i) => match *i {
+              ImplItemType::ImplMethod(ref m) => return Some(m),
+            },
+            None => continue,
+          },
+          _ => continue,
+        }
       }
     }
     None
@@ -79,20 +99,6 @@ impl ModItemType {
 
   fn get_name(&self) -> Option<&str> {
     self.item.get_name()
-  }
-
-  pub fn get_return_type_for_path(&self, path: &[String]) -> ReturnType {
-    if path.len() == 0 {
-      match self.item {
-        ItemType::ItemFn(ref f) => match f.fn_decl.1 {
-          Some(ref r) => ReturnType::Some(r.clone()),
-          None => ReturnType::None,
-        },
-        _ => panic!("{:?} {:?}", self, path),
-      }
-    } else {
-      panic!("{:?} {:?}", self, path);
-    }
   }
 }
 
@@ -317,6 +323,8 @@ impl ItemType {
   pub fn get_name(&self) -> Option<&str> {
     match *self {
       ItemType::ItemFn(ref i) => Some(&*i.name),
+      ItemType::ItemStruct(ref i) => Some(&*i.name),
+      ItemType::ItemImpl(ref i) => Some(&*i.name),
       _ => None,
     }
   }

@@ -243,13 +243,30 @@ impl ExprCallType {
     if self.return_type.is_known() { 0 } else { 1 }
   }
 
+  fn find_return_type(&self, path: &[String], krate: &CrateType) -> ReturnType {
+    match path.len() {
+      1 => match krate.get_function_with_name(&*path[0]) {
+        Some(ref f) => match f.fn_decl.1 {
+          Some(ref r) => ReturnType::Some(r.clone()),
+          None => ReturnType::None,
+        },
+        None => panic!("{:?} {:?}", path, krate),
+      },
+      2 => match krate.get_method_with_name(&*path[0], &*path[1]) {
+        Some(ref f) => match f.fn_decl.1 {
+          Some(ref r) => ReturnType::Some(r.clone()),
+          None => ReturnType::None,
+        },
+        None => panic!("{:?} {:?}", path, krate),
+      },
+      _ => panic!("{:?} {:?}", path, krate),
+    }
+  }
+
   pub fn identify_types(&mut self, krate: &CrateType) {
     let return_type = match self.return_type {
       ReturnType::Unknown => match self.function {
-        ExprType::ExprPath(ref path) => match krate.get_by_name(&*path[0]) {
-          Some(ref item) => item.get_return_type_for_path(&path[1..]),
-          None => panic!("{:?} {:?}", path, krate),
-        },
+        ExprType::ExprPath(ref path) => self.find_return_type(path, krate),
         _ => panic!("{:?}", self.function),
       },
       _ => return,
