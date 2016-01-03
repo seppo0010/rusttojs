@@ -367,6 +367,8 @@ impl RustToJs for TokenTree {
     match *self {
       TokenTree::Tok(ref s) => escape(s),
       TokenTree::TokenTrees(ref v) => v.iter().map(|t| t.to_js(indent)).collect::<Vec<_>>().join(" "),
+      TokenTree::Delim(ref d1, ref t, ref d2) => format!("{}{}{}", d1, t.to_js(0), d2),
+      TokenTree::None => "".to_owned(),
     }
   }
 }

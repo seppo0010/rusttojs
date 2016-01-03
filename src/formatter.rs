@@ -33,5 +33,7 @@ pub fn format_str(args: &TokenTree) -> String {
         }
       }).collect::<Vec<_>>().join("")
     },
+    TokenTree::Delim(ref d1, ref t, ref d2) => format!("{}{}{}", d1, format_str(t), d2),
+    TokenTree::None => "".to_owned(),
   }
 }

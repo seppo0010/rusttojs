@@ -273,6 +273,8 @@ impl DeclLocalType {
 
 #[derive(Debug, Clone)]
 pub enum TokenTree {
+  None,
+  Delim(String, Box<TokenTree>, String),
   Tok(String),
   TokenTrees(Vec<TokenTree>),
 }
@@ -288,11 +290,15 @@ impl TokenTree {
 
 impl TokenTree {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    let nodes = value.get_nodes();
     match &*value.get_name() {
       "TTTok" => TokenTree::Tok(value.get_string_nodes().join("")),
       "TokenTrees" => TokenTree::TokenTrees(value.get_nodes().iter().map(
             |node| TokenTree::from_tree(node)).collect()),
-      _ => panic!("{:?}", value),
+      "TTDelim" => TokenTree::Delim(nodes[0].get_string_nodes().join(""),
+          Box::new(TokenTree::from_tree(&nodes[1])),
+          nodes[2].get_string_nodes().join("")),
+      _ => TokenTree::None,
     }
   }
 }
