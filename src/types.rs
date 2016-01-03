@@ -1,5 +1,5 @@
 use super::TreeNode;
-use exprs::ExprType;
+use exprs::{ExprType, ExprScope};
 use items::CrateType;
 
 #[derive(Debug, Clone)]
@@ -82,9 +82,9 @@ impl BlockType {
     self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
     for stmt in self.stmts.iter_mut() {
-      stmt.identify_types(krate);
+      stmt.identify_types(krate, scope);
     }
   }
 }
@@ -215,6 +215,13 @@ impl PatType {
       _ => panic!("{:?}", value),
     }
   }
+
+  pub fn to_scope_string(&self) -> &str {
+    match *self {
+      PatType::PatLit(ref s) => &**s,
+      PatType::PatIdent(_, ref s) => &**s,
+    }
+  }
 }
 
 
@@ -252,9 +259,13 @@ impl DeclLocalType {
     }
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
     match self.value {
-      Some(ref mut x) => x.identify_types(krate),
+      Some(ref mut x) => x.identify_types(krate, scope),
+      None => (),
+    }
+    match self.value {
+      Some(ref x) => scope.set(self.pat.to_scope_string().to_owned(), x.clone().get_return_type()),
       None => (),
     }
   }

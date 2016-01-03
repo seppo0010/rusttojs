@@ -1,7 +1,7 @@
 use std::iter;
 
 use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFnType, ModType, StructType, ViewItemExternCrateType};
-use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType};
+use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType, ExprFieldType};
 use formatter::format_str;
 use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
 
@@ -22,7 +22,13 @@ const KEYWORDS: &'static [&'static str] = &[
 ];
 
 fn escape(s: &str) -> String {
-  if KEYWORDS.contains(&&*s) { format!("$rtj_{}", s) } else { s.to_owned() }
+  if s == "self" {
+    "this".to_owned()
+  } else if KEYWORDS.contains(&&*s) {
+    format!("$rtj_{}", s)
+  } else {
+    s.to_owned()
+  }
 }
 
 fn indentation(indent: usize) -> String {
@@ -39,6 +45,16 @@ impl RustToJs for ExprAssignType {
           indentation(indent),
           self.target.to_js(0),
           self.source.to_js(0))
+  }
+}
+
+impl RustToJs for ExprFieldType {
+  fn to_js(&self, _indent: usize) -> String {
+    format!(
+        "{}.{}",
+        self.obj.to_js(0),
+        self.path
+        )
   }
 }
 
@@ -66,6 +82,7 @@ impl RustToJs for ExprType {
       ExprType::ExprAssign(ref e) => e.to_js(indent),
       ExprType::ExprStruct(ref e) => e.to_js(indent),
       ExprType::ExprBinaryOp(ref e) => e.to_js(indent),
+      ExprType::ExprField(ref e) => e.to_js(indent),
       ExprType::ExprBlock(ref e) =>
         format!("(function() {}\n{}\n{}{})()",
             "{",
@@ -95,8 +112,7 @@ impl RustToJs for ExprIfType {
 
 impl RustToJs for ExprStructType {
   fn to_js(&self, indent: usize) -> String {
-    format!("{}return new {}({}\n{}\n{}{})",
-        indentation(indent),
+    format!("new {}({}\n{}\n{}{})",
         self.name,
         "{",
         self.fields.iter().map(|field| format!("{}{}: {},",

@@ -1,5 +1,5 @@
 use super::TreeNode;
-use exprs::MacroType;
+use exprs::{MacroType, ExprScope};
 use types::{AttrsAndVisType, AttrsAndBlockType, ReturnType, AttrType};
 
 #[derive(Debug, Clone)]
@@ -70,6 +70,26 @@ impl CrateType {
     }
     None
   }
+
+  pub fn get_property_type_for_field(&self, struct_path: &Vec<String>, property_name: &str) -> Option<Vec<String>> {
+    let struct_name = match struct_path.len() {
+      1 => &*struct_path[0],
+      _ => panic!("{:?}", struct_path),
+    };
+
+    for item in self.mod_items.iter() {
+      if item.get_name() == Some(struct_name) {
+        match item.item {
+          ItemType::ItemStruct(ref f) => match f.fields.iter().find(|item| item.name == property_name) {
+            Some(i) => return Some(i.parameter_type.clone()),
+            None => continue,
+          },
+          _ => continue,
+        }
+      }
+    }
+    None
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -112,10 +132,11 @@ pub struct ImplMethodType {
   pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
   pub where_clause: Vec<String>,
   pub inner_attrs_and_block: AttrsAndBlockType,
+  scope: ExprScope,
 }
 
 impl ImplMethodType {
-  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+  pub fn from_tree<T: TreeNode>(value: &T, struct_name: String) -> Self {
     let fn_decl_node = value.get_node_by_name("FnDecl").unwrap();
     let is_static = fn_decl_node.get_node_by_name("SelfStatic").is_some();
     let fn_decl: (Vec<ParameterType>, Option<Vec<String>>) = {
@@ -150,7 +171,12 @@ impl ImplMethodType {
       where_clause: vec![],
       fn_decl: fn_decl,
       inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
+      scope: ExprScope::with_self(struct_name),
     }
+  }
+
+  pub fn identify_types(&mut self, krate: &CrateType) {
+    self.inner_attrs_and_block.block.identify_types(krate, &mut self.scope)
   }
 }
 
@@ -160,9 +186,9 @@ pub enum ImplItemType {
 }
 
 impl ImplItemType {
-  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+  pub fn from_tree<T: TreeNode>(value: &T, name: String) -> Self {
     match &*value.get_name() {
-      "Method" => ImplItemType::ImplMethod(ImplMethodType::from_tree(value)),
+      "Method" => ImplItemType::ImplMethod(ImplMethodType::from_tree(value, name)),
       _ => panic!("{:?}", value),
     }
   }
@@ -187,7 +213,7 @@ impl ImplItemType {
 
   fn identify_types(&mut self, krate: &CrateType) {
     match *self {
-      ImplItemType::ImplMethod(ref mut t) => t.inner_attrs_and_block.block.identify_types(krate),
+      ImplItemType::ImplMethod(ref mut t) => t.identify_types(krate),
     }
   }
 }
@@ -204,16 +230,17 @@ pub struct ImplType {
 impl ImplType {
   pub fn from_tree<T: TreeNode>(value: &T) -> Self {
     let nodes = value.get_nodes();
+    let name = value
+      .get_node_by_name("TySum").unwrap()
+      .get_node_by_name("TyPath").unwrap()
+      .get_components_ident_joined();
     ImplType {
       is_unsafe: !nodes[0].is_null(),
-      name: value
-        .get_node_by_name("TySum").unwrap()
-        .get_node_by_name("TyPath").unwrap()
-        .get_components_ident_joined(),
+      name: name.clone(),
       generic_params: (vec![], vec![]),
       attr: AttrType { doc_comment: None },
       items: value.get_node_by_name("ImplItems")
-        .map(|items| items.get_nodes().iter().map(|item| ImplItemType::from_tree(item)).collect())
+        .map(|items| items.get_nodes().iter().map(|item| ImplItemType::from_tree(item, name.clone())).collect())
         .unwrap_or(vec![])
     }
   }
@@ -342,6 +369,7 @@ pub struct ItemFnType {
   pub generic_params: (Vec<String>, Vec<String>),
   pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
   pub inner_attrs_and_block: AttrsAndBlockType,
+  scope: ExprScope,
 }
 
 impl ItemFnType {
@@ -379,6 +407,7 @@ impl ItemFnType {
       generic_params: (Vec::new(), Vec::new()),
       fn_decl: fn_decl,
       inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
+      scope: ExprScope::default(),
     }
   }
 
@@ -387,7 +416,7 @@ impl ItemFnType {
   }
 
   pub fn identify_types(&mut self, krate: &CrateType) {
-    self.inner_attrs_and_block.block.identify_types(krate);
+    self.inner_attrs_and_block.block.identify_types(krate, &mut self.scope);
   }
 }
 

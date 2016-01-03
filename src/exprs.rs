@@ -1,6 +1,32 @@
+use std::collections::HashMap;
+
 use super::TreeNode;
 use items::CrateType;
 use types::{BinaryOperation, DeclLocalType, BlockType, FieldInitType, ReturnType, TokenTree};
+
+#[derive(Debug, Clone, Default)]
+pub struct ExprScope {
+  vars: HashMap<String, ReturnType>,
+}
+
+impl ExprScope {
+  pub fn with_self(selfcontext: String) -> ExprScope {
+    let mut scope = ExprScope::default();
+    scope.vars.insert("self".to_owned(), ReturnType::Some(vec![selfcontext]));
+    scope
+  }
+
+  pub fn get(&self, key: &String) -> ReturnType {
+    match self.vars.get(key) {
+      Some(t) => t.clone(),
+      None => ReturnType::None,
+    }
+  }
+
+  pub fn set(&mut self, key: String, value: ReturnType) {
+    self.vars.insert(key, value);
+  }
+}
 
 #[derive(Debug, Clone)]
 pub enum ExprType {
@@ -15,6 +41,7 @@ pub enum ExprType {
   DeclLocal(DeclLocalType),
   ExprPath(Vec<String>),
   ExprBlock(BlockType),
+  ExprField(ExprFieldType),
 }
 
 impl ExprType {
@@ -25,7 +52,11 @@ impl ExprType {
       "ExprRet" => ExprType::ExprRet(ExprRetType::from_tree(value.get_nodes().first())),
       "ExprLit" => ExprType::ExprLit(ExprLitType::from_tree(&value.get_nodes()[0], return_type)),
       "ExprCall" => ExprType::ExprCall(Box::new(ExprCallType::from_tree(value, return_type))),
-      "ExprPath" => ExprType::ExprPath(value.get_components_ident()),
+      "ExprPath" => ExprType::ExprPath(value.get_node_by_name("components").unwrap_or(value)
+          .get_nodes().iter()
+          .map(|node| node.get_string_nodes().join(""))
+          .collect()),
+      "ExprField" => ExprType::ExprField(ExprFieldType::from_tree_r(value, return_type)),
       "ExprAssign" => ExprType::ExprAssign(ExprAssignType::from_tree(value, return_type)),
       "ExprBinary" => ExprType::ExprBinaryOp(ExprBinaryOpType::from_tree(value, return_type)),
       "ExprIf" => ExprType::ExprIf(ExprIfType::from_tree(value, return_type)),
@@ -66,6 +97,7 @@ impl ExprType {
       ExprType::ExprIf(ref e) => e.unknown_type_count(),
       ExprType::ExprBlock(ref e) => e.unknown_type_count(),
       ExprType::ExprStruct(_) => 0,
+      ExprType::ExprField(ref e) => e.unknown_type_count(),
     }
   }
 
@@ -81,23 +113,25 @@ impl ExprType {
       ExprType::ExprBinaryOp(ref e) => e.return_type.clone(),
       ExprType::ExprIf(ref e) => e.return_type.clone(),
       ExprType::ExprBlock(ref e) => e.get_return_type(),
-      ExprType::ExprStruct(_) => ReturnType::None,
+      ExprType::ExprStruct(ref s) => ReturnType::Some(vec![s.name.clone()]),
+      ExprType::ExprField(ref e) => e.return_type.clone(),
     }
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
     match *self {
       ExprType::ExprMac(ref mut e) => e.identify_types(),
-      ExprType::DeclLocal(ref mut e) => e.identify_types(krate),
+      ExprType::DeclLocal(ref mut e) => e.identify_types(krate, scope),
       ExprType::ExprRet(_) => (),
       ExprType::ExprLit(ref mut e) => e.identify_types(),
-      ExprType::ExprCall(ref mut e) => e.identify_types(krate),
+      ExprType::ExprCall(ref mut e) => e.identify_types(krate, scope),
       ExprType::ExprPath(_) => (),
-      ExprType::ExprAssign(ref mut e) => e.identify_types(krate),
-      ExprType::ExprBinaryOp(ref mut e) => e.identify_types(krate),
-      ExprType::ExprIf(ref mut e) => e.identify_types(krate),
-      ExprType::ExprBlock(ref mut e) => e.identify_types(krate),
+      ExprType::ExprAssign(ref mut e) => e.identify_types(krate, scope),
+      ExprType::ExprBinaryOp(ref mut e) => e.identify_types(krate, scope),
+      ExprType::ExprIf(ref mut e) => e.identify_types(krate, scope),
+      ExprType::ExprBlock(ref mut e) => e.identify_types(krate, scope),
       ExprType::ExprStruct(_) => (),
+      ExprType::ExprField(ref mut e) => e.identify_types(krate, scope),
     }
   }
 }
@@ -147,9 +181,9 @@ impl ExprIfType {
     c + self.cond.unknown_type_count() + self.true_block.unknown_type_count()
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
-    self.cond.identify_types(krate);
-    self.true_block.identify_types(krate);
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
+    self.cond.identify_types(krate, scope);
+    self.true_block.identify_types(krate, scope);
     self.return_type = self.return_type.clone();
   }
 }
@@ -243,7 +277,7 @@ impl ExprCallType {
     if self.return_type.is_known() { 0 } else { 1 }
   }
 
-  fn find_return_type(&self, path: &[String], krate: &CrateType) -> ReturnType {
+  fn find_return_type(&self, path: &[String], krate: &CrateType, _scope: &mut ExprScope) -> ReturnType {
     match path.len() {
       1 => match krate.get_function_with_name(&*path[0]) {
         Some(ref f) => match f.fn_decl.1 {
@@ -263,11 +297,23 @@ impl ExprCallType {
     }
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
     let return_type = match self.return_type {
       ReturnType::Unknown => match self.function {
-        ExprType::ExprPath(ref path) => self.find_return_type(path, krate),
-        _ => panic!("{:?}", self.function),
+        ExprType::ExprPath(ref path) => self.find_return_type(path, krate, scope),
+        ExprType::ExprField(ref f) => self.find_return_type(&{
+          let mut v = match *f.obj {
+            ExprType::ExprPath(ref p) => match scope.get(&p.join("::")) {
+              ReturnType::Some(ref t) => t.clone(),
+              ReturnType::None => panic!("{:?}", p),
+              ReturnType::Unknown => return,
+            },
+            _ => panic!("{:?}", f),
+          };
+          v.push(f.path.to_owned());
+          v
+        }[..], krate, scope),
+        _ => panic!("{:?}, {:?}", self.function, scope),
       },
       _ => return,
     };
@@ -339,9 +385,9 @@ impl ExprAssignType {
     self.target.unknown_type_count() + self.source.unknown_type_count()
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
-    self.target.identify_types(krate);
-    self.source.identify_types(krate);
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
+    self.target.identify_types(krate, scope);
+    self.source.identify_types(krate, scope);
   }
 }
 
@@ -367,12 +413,57 @@ impl ExprBinaryOpType {
     if self.return_type.is_known() { 0 } else { 1 }
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType) {
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
     if self.return_type.is_known() {
       return;
     }
-    self.lhs.identify_types(krate);
-    self.rhs.identify_types(krate);
+    self.lhs.identify_types(krate, scope);
+    self.rhs.identify_types(krate, scope);
     self.operation.get_return_type(self.lhs.get_return_type(), self.rhs.get_return_type());
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprFieldType {
+  pub return_type: ReturnType,
+  pub obj: Box<ExprType>,
+  pub path: String,
+}
+
+impl ExprFieldType {
+  pub fn from_tree_r<T: TreeNode>(value: &T, return_type: ReturnType) -> Self {
+    let nodes = value.get_nodes();
+    ExprFieldType {
+      return_type: return_type,
+      obj: Box::new(ExprType::from_tree_r(&nodes[0], ReturnType::Unknown)),
+      path: nodes[1].get_node_by_name("ident").unwrap()
+        .get_string_nodes().join(""),
+    }
+  }
+
+  pub fn unknown_type_count(&self) -> u32 {
+    self.obj.unknown_type_count() + if self.return_type.is_known() { 0 } else { 1 }
+  }
+
+  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
+    self.obj.identify_types(krate, scope);
+    match self.obj.get_return_type() {
+      ReturnType::Some(ref t) => self.return_type = if t.len() == 1 {
+        match scope.vars.get(&t[0]) {
+          Some(t) => match *t {
+            ReturnType::Some(ref struct_name) => match krate.get_property_type_for_field(struct_name, &*self.path) {
+              Some(v) => ReturnType::Some(v),
+              _ => ReturnType::Unknown,
+            },
+            _ => ReturnType::Unknown,
+          },
+          None => ReturnType::Unknown,
+        }
+      } else {
+        ReturnType::Some(krate.get_property_type_for_field(t, &*self.path).unwrap())
+      },
+      ReturnType::Unknown => (),
+      ReturnType::None => panic!("Expected obj to return something"),
+    }
   }
 }
