@@ -1,7 +1,7 @@
 use std::iter;
 
-use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFnType, ModType, StructType, ViewItemExternCrateType};
-use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType, ExprFieldType};
+use items::{CrateType, ModItemType, ImplItemType, ImplMethodType, ImplType, ItemType, ItemFnType, ModType, StructType, ViewItemExternCrateType, EnumType};
+use exprs::{ExprAssignType, ExprBinaryOpType, ExprType, ExprIfType, ExprRetType, ExprStructType, ExprLitType, ExprCallType, MacroType, ExprFieldType, MatchType, UnaryType};
 use formatter::format_str;
 use types::{AttrsAndVisType, AttrsAndBlockType, BlockType, BinaryOperation, DeclLocalType, PatType, TokenTree};
 
@@ -58,6 +58,20 @@ impl RustToJs for ExprFieldType {
   }
 }
 
+impl RustToJs for MatchType {
+  fn to_js(&self, _indent: usize) -> String {
+    "".to_owned()
+  }
+}
+
+impl RustToJs for UnaryType {
+  fn to_js(&self, indent: usize) -> String {
+    match *self {
+      UnaryType::Deref(ref t, _) => t.to_js(indent),
+    }
+  }
+}
+
 impl RustToJs for ExprBinaryOpType {
   fn to_js(&self, indent: usize) -> String {
     format!(
@@ -83,6 +97,8 @@ impl RustToJs for ExprType {
       ExprType::ExprStruct(ref e) => e.to_js(indent),
       ExprType::ExprBinaryOp(ref e) => e.to_js(indent),
       ExprType::ExprField(ref e) => e.to_js(indent),
+      ExprType::ExprMatch(ref e) => e.to_js(indent),
+      ExprType::ExprUnary(ref e) => e.to_js(indent),
       ExprType::ExprBlock(ref e) =>
         format!("(function() {}\n{}\n{}{})()",
             "{",
@@ -180,6 +196,7 @@ impl RustToJs for ItemType {
       ItemType::ItemImpl(ref i) => i.to_js(indent),
       ItemType::ViewItemExternCrate(ref i) => i.to_js(indent),
       ItemType::ItemMod(ref i) => i.to_js(indent),
+      ItemType::ItemEnum(ref i) => i.to_js(indent),
     }
   }
 }
@@ -209,7 +226,7 @@ impl RustToJs for BlockType {
     let count = self.stmts.len();
     self.stmts.iter().enumerate()
       .map(|(i, s)| {
-        if self.get_return_type().is_some() && i == count - 1 && !s.is_ret() {
+        if self.get_return_type(&vec![&mut self.scope]).is_some() && i == count - 1 && !s.is_ret() {
           format!("{};",
             ExprRetType::with_value(Some(Box::new(s.clone()))).to_js(indent))
         } else {
@@ -263,6 +280,8 @@ impl RustToJs for DeclLocalType {
         match self.pat {
           PatType::PatLit(ref s) => escape(&*s),
           PatType::PatIdent(_, ref s) => s.clone(),
+          PatType::PatEnum(_, _) => panic!("{:?}", self.pat),
+          PatType::PatWild => return "".to_owned(),
         },
         match self.value {
           Some(ref v) => format!(" = {}", v.to_js(indent)),
@@ -370,5 +389,11 @@ impl RustToJs for TokenTree {
       TokenTree::Delim(ref d1, ref t, ref d2) => format!("{}{}{}", d1, t.to_js(0), d2),
       TokenTree::None => "".to_owned(),
     }
+  }
+}
+
+impl RustToJs for EnumType {
+  fn to_js(&self, indent: usize) -> String {
+    "".to_owned()
   }
 }

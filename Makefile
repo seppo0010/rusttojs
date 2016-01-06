@@ -20,6 +20,7 @@ build/lex.c:
 build/parser-lalr.y:
 	mkdir -p build
 	wget "https://raw.githubusercontent.com/rust-lang/rust/4ce1dafd1d58852a88f38a0f63cb11236a7470cb/src/grammar/parser-lalr.y" -O build/parser-lalr.y
+	patch -p0 < parser-lalr.y.patch
 
 build/parser-lalr.tab.c: build/parser-lalr.y
 	$(BISON_PREFIX)bison build/parser-lalr.y --output=build/parser-lalr.tab.c --defines=build/parser-lalr.tab.h --name-prefix=rs -d

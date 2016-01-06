@@ -1,0 +1,13 @@
+--- build/parser-lalr.y	2016-01-02 19:19:12.000000000 -0800
++++ build/parser-lalr.y	2016-01-02 19:28:15.000000000 -0800
+@@ -394,8 +394,8 @@
+ 
+ // enums
+ item_enum
+-: ENUM ident generic_params maybe_where_clause '{' enum_defs '}'     { $$ = mk_node("ItemEnum", 0); }
+-| ENUM ident generic_params maybe_where_clause '{' enum_defs ',' '}' { $$ = mk_node("ItemEnum", 0); }
++: ENUM ident generic_params maybe_where_clause '{' enum_defs '}'     { $$ = mk_node("ItemEnum", 4, $2, $3, $4, $6); }
++| ENUM ident generic_params maybe_where_clause '{' enum_defs ',' '}' { $$ = mk_node("ItemEnum", 4, $2, $3, $4, $6); }
+ ;
+ 
+ enum_defs

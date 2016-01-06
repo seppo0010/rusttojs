@@ -132,7 +132,6 @@ pub struct ImplMethodType {
   pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
   pub where_clause: Vec<String>,
   pub inner_attrs_and_block: AttrsAndBlockType,
-  scope: ExprScope,
 }
 
 impl ImplMethodType {
@@ -170,13 +169,12 @@ impl ImplMethodType {
       generic_params: (vec![], vec![]),
       where_clause: vec![],
       fn_decl: fn_decl,
-      inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
-      scope: ExprScope::with_self(struct_name),
+      inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type, ExprScope::with_self(struct_name)),
     }
   }
 
   pub fn identify_types(&mut self, krate: &CrateType) {
-    self.inner_attrs_and_block.block.identify_types(krate, &mut self.scope)
+    self.inner_attrs_and_block.block.identify_types(krate, &vec![])
   }
 }
 
@@ -310,6 +308,7 @@ pub enum ItemType {
   ItemImpl(ImplType),
   ViewItemExternCrate(ViewItemExternCrateType),
   ItemMod(ModType),
+  ItemEnum(EnumType),
 }
 
 impl ItemType {
@@ -321,6 +320,7 @@ impl ItemType {
       "ItemImpl" => ItemType::ItemImpl(ImplType::from_tree(value)),
       "ViewItemExternCrate" => ItemType::ViewItemExternCrate(ViewItemExternCrateType::from_tree(value)),
       "ItemMod" => ItemType::ItemMod(ModType::from_tree(value)),
+      "ItemEnum" => ItemType::ItemEnum(EnumType::from_tree(value)),
       _ => panic!("{:?}", value),
     }
   }
@@ -333,6 +333,7 @@ impl ItemType {
       ItemType::ItemImpl(ref i) => i.unknown_type_count(),
       ItemType::ViewItemExternCrate(_) => 0,
       ItemType::ItemMod(_) => 0,
+      ItemType::ItemEnum(_) => 0,
     }
   }
 
@@ -344,6 +345,7 @@ impl ItemType {
       ItemType::ItemImpl(ref mut i) => i.identify_types(krate),
       ItemType::ViewItemExternCrate(_) => (),
       ItemType::ItemMod(_) => (),
+      ItemType::ItemEnum(_) => (),
     }
   }
 
@@ -369,7 +371,6 @@ pub struct ItemFnType {
   pub generic_params: (Vec<String>, Vec<String>),
   pub fn_decl: (Vec<ParameterType>, Option<Vec<String>>),
   pub inner_attrs_and_block: AttrsAndBlockType,
-  scope: ExprScope,
 }
 
 impl ItemFnType {
@@ -406,8 +407,7 @@ impl ItemFnType {
       name: name,
       generic_params: (Vec::new(), Vec::new()),
       fn_decl: fn_decl,
-      inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type),
-      scope: ExprScope::default(),
+      inner_attrs_and_block: AttrsAndBlockType::from_tree(value, return_type, ExprScope::default()),
     }
   }
 
@@ -416,7 +416,7 @@ impl ItemFnType {
   }
 
   pub fn identify_types(&mut self, krate: &CrateType) {
-    self.inner_attrs_and_block.block.identify_types(krate, &mut self.scope);
+    self.inner_attrs_and_block.block.identify_types(krate, &vec![]);
   }
 }
 
@@ -453,6 +453,28 @@ impl ModType {
         )
         .collect::<Vec<_>>()
         .join("")
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumType {
+  pub name: String,
+  pub options: Vec<(String, Vec<String>)>,
+}
+
+impl EnumType {
+  pub fn from_tree<T: TreeNode>(value: &T) -> Self {
+    assert_eq!(value.get_name(), "ItemEnum");
+    EnumType {
+      name: value
+        .get_nodes().iter()
+        .map(|node|
+          node.get_string_nodes().join("")
+        )
+        .collect::<Vec<_>>()
+        .join(""),
+      options: Vec::new(),
     }
   }
 }

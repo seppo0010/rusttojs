@@ -38,6 +38,8 @@ pub trait TreeNode : Debug + Sized {
       .get_node_by_name("ident").unwrap()
       .get_string_nodes().join("").to_owned()
   }
+
+  fn get_string_value(&self) -> Option<&str>;
 }
 
 impl TreeNode for Value {
@@ -71,6 +73,10 @@ impl TreeNode for Value {
         ).and_then(|nodes| nodes.as_array()
           ).unwrap_or(&Vec::new()).into_iter().filter_map(
             |val| val.as_string().map(|s| s.to_owned())).collect()
+  }
+
+  fn get_string_value(&self) -> Option<&str> {
+    self.as_string()
   }
 }
 

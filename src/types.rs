@@ -49,12 +49,13 @@ impl ReturnType {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockType {
+pub struct BlockType<'a> {
   pub stmts: Vec<ExprType>,
+  pub scope: ExprScope<'a>,
 }
 
-impl BlockType {
-  pub fn from_tree<T: TreeNode>(value: Option<&T>, return_type: ReturnType) -> Self {
+impl<'a> BlockType<'a> {
+  pub fn from_tree<T: TreeNode>(value: Option<&T>, return_type: ReturnType, scope: Option<ExprScope>) -> Self {
     let stmts: Vec<_> = value
       .map(|node| if node.maybe_get_nodes().and_then(|n| n.last().map(|n| n.get_name())) == Some("stmts".to_owned()) {
         node.maybe_get_nodes().unwrap().last().unwrap().get_nodes()
@@ -71,20 +72,23 @@ impl BlockType {
         .enumerate()
         .map(|(i, node)| ExprType::from_tree_r(&node, if i + 1 == count { return_type.clone() } else { ReturnType::None }))
         .collect(),
+      scope: scope.unwrap_or(ExprScope::default()),
     }
   }
 
-  pub fn get_return_type(&self) -> ReturnType {
-    self.stmts.last().map(|x| x.get_return_type()).unwrap_or(ReturnType::None)
+  pub fn get_return_type(&self, scopes: &Vec<&mut ExprScope>) -> ReturnType {
+    self.stmts.last().map(|x| x.get_return_type(scopes)).unwrap_or(ReturnType::None)
   }
 
   pub fn unknown_type_count(&self) -> u32 {
     self.stmts.iter().fold(0, |acc, stmt| acc + stmt.unknown_type_count())
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
+  pub fn identify_types(&mut self, krate: &CrateType, scopes: &Vec<&mut ExprScope>) {
+    let mut local_scopes = vec![&mut self.scope];
+    local_scopes.extend(scopes.iter().cloned());
     for stmt in self.stmts.iter_mut() {
-      stmt.identify_types(krate, scope);
+      stmt.identify_types(krate, local_scopes);
     }
   }
 }
@@ -92,14 +96,14 @@ impl BlockType {
 #[derive(Debug, Clone)]
 pub struct AttrsAndBlockType {
   pub attrs: Vec<AttrType>,
-  pub block: BlockType
+  pub block: BlockType,
 }
 
 impl AttrsAndBlockType {
-  pub fn from_tree<T: TreeNode>(value: &T, return_type: ReturnType) -> Self {
+  pub fn from_tree<T: TreeNode>(value: &T, return_type: ReturnType, scope: ExprScope) -> Self {
     AttrsAndBlockType {
       attrs: Vec::new(),
-      block: BlockType::from_tree(value.get_node_by_name("ExprBlock"), return_type),
+      block: BlockType::from_tree(value.get_node_by_name("ExprBlock"), return_type, Some(scope)),
     }
   }
 }
@@ -194,6 +198,8 @@ pub enum BindingType {
 pub enum PatType {
   PatLit(String),
   PatIdent(BindingType, String),
+  PatEnum(String, Vec<Box<PatType>>),
+  PatWild,
 }
 
 impl PatType {
@@ -203,7 +209,7 @@ impl PatType {
       "PatLit" => PatType::PatLit(value.get_components_ident_joined()),
       "PatIdent" => PatType::PatIdent(match &*nodes[0].get_name() {
         "BindByValue" => BindingType::Mut,
-        "BindByRef" => match &*nodes[0].get_name() {
+        "BindByRef" => match &*nodes[0].get_string_nodes().join("") {
           "MutMutable" => BindingType::RefMut,
           "MutImmutable" => BindingType::Ref,
           _ => panic!("{:?}", value),
@@ -212,7 +218,17 @@ impl PatType {
       },
       value.get_node_by_name("ident").unwrap()
         .get_string_nodes().join("").to_owned()),
-      _ => panic!("{:?}", value),
+      "PatEnum" => PatType::PatEnum(value.get_components_ident_joined(),
+          value.get_nodes()[1].get_nodes().iter().map(|node| {
+            Box::new(PatType::from_tree(node))
+          }).collect()),
+      _ => {
+        if value.get_string_value() == Some("PatWild") {
+          PatType::PatWild
+        } else {
+          panic!("{:?}", value)
+        }
+      },
     }
   }
 
@@ -220,6 +236,8 @@ impl PatType {
     match *self {
       PatType::PatLit(ref s) => &**s,
       PatType::PatIdent(_, ref s) => &**s,
+      PatType::PatEnum(ref s, _) => &**s,
+      PatType::PatWild => "",
     }
   }
 }
@@ -259,13 +277,13 @@ impl DeclLocalType {
     }
   }
 
-  pub fn identify_types(&mut self, krate: &CrateType, scope: &mut ExprScope) {
+  pub fn identify_types(&mut self, krate: &CrateType, scopes: &Vec<&mut ExprScope>) {
     match self.value {
-      Some(ref mut x) => x.identify_types(krate, scope),
+      Some(ref mut x) => x.identify_types(krate, scopes),
       None => (),
     }
     match self.value {
-      Some(ref x) => scope.set(self.pat.to_scope_string().to_owned(), x.clone().get_return_type()),
+      Some(ref x) => scopes[0].set(self.pat.to_scope_string().to_owned(), x.clone().get_return_type(scopes)),
       None => (),
     }
   }
